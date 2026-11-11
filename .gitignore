@@ -1,0 +1,10 @@
+node_modules/
+android/
+ios/
+desktop/www/
+desktop/dist/
+desktop/node_modules/
+*.jks
+*.keystore
+*.apk
+.DS_Store
