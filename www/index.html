@@ -185,6 +185,7 @@ const DUMP=["کمپرسی","کمپرسی تریلی"];
 let tab = (location.hash||"#dash").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="dash";
 
+const APP_BUILD="۲۳ آبان — ۲";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
 const COLS=["machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos"];
 const S={machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -339,7 +340,7 @@ function chart(type,labels,values,color){
 
 /* ---------- نما ---------- */
 function render(){
-  document.getElementById("todayLbl").textContent = jal(todayISO());
+  document.getElementById("todayLbl").textContent = jal(todayISO())+" • نسخه "+APP_BUILD;
   document.getElementById("nav").innerHTML = TABS.map(([k,n])=>
     `<button data-tab="${k}" class="${k===tab?"active":""}">${n}</button>`).join("");
   document.getElementById("main").innerHTML = ({dash:vDash,pm:()=>vTasks("pm"),wash:()=>vTasks("wash"),
@@ -586,6 +587,7 @@ function guessCause(m,d){
   if(m.status==="در تعمیر") return "خرابی ماشین";
   if(S.faults.some(f=>f.machineId===m.id&&f.date===d&&(f.stopped||f.status!=="fixed"))) return "خرابی ماشین";
   if(S.fuel.some(f=>f.machineId===m.id&&f.date===d&&+f.min>=30)) return "معطلی سوخت‌گیری";
+  if(sumBy(S.trips.filter(x=>x.machineId===m.id&&x.date===d),x=>x.gpsFuelMin)>=30) return "معطلی سوخت‌گیری";
   const c=S.contacts.find(c=>c.machineId===m.id&&c.active!==false);
   if(c&&S.att.some(a=>a.contactId===c.id&&a.date===d&&a.status&&a.status!=="حاضر")) return "مرخصی یا غیبت راننده";
   return ""; }
@@ -632,16 +634,71 @@ async function gpsGet(path,body){ const ctl=new AbortController(), tm=setTimeout
   try{ const r=await fetch(gpsUrl()+path,{method:body?"POST":"GET",signal:ctl.signal,headers:Object.assign({"x-app-token":gpsTok()},body?{"content-type":"application/json"}:{}),body:body?JSON.stringify(body):undefined});
     const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("کد خطا "+r.status)); return j;
   }catch(e){ throw new Error(e.name==="AbortError"?"زمان پاسخ سرور GPS تمام شد":(e.message||"خطای ارتباط با سرور GPS")); } finally{ clearTimeout(tm); } }
-async function gpsLoad(day,force){ if(!gpsUrl()||gps.busy) return; if(!force&&gps.day===day&&Date.now()-gps.at<30000) return;
+async function gpsLoad(day,force,soft){ if(!gpsUrl()||gps.busy) return; const had=!!gps.st; if(!force&&gps.day===day&&Date.now()-gps.at<30000) return;
   gps.busy=true;
   try{ const [st,tr]=await Promise.all([gpsGet("/gps/state"),gpsGet("/gps/trips?from="+day+"&to="+day)]);
     gps.st=st; gps.trips=tr.trips||[]; gps.open=tr.open||[]; gps.err=st.ok===false?(st.error||"پنل ردیاب پاسخ نمی‌دهد"):"";
   }catch(e){ gps.err=e.message; }
-  gps.busy=false; gps.day=day; gps.at=Date.now(); if(tab==="fleet") render(); }
+  gps.busy=false; gps.day=day; gps.at=Date.now();
+  if(tab==="fleet"){ if(soft&&had&&gps.st&&!gps.err&&document.getElementById("gmap")) gmapDraw(); else render(); } }   // تازه‌سازی خودکار فقط نقشه را عوض می‌کند تا فرم‌های باز بسته نشوند
 const gpsMach=code=>code?S.machines.find(m=>String(m.code||"")===String(code)):null;
+setInterval(()=>{ if(tab!=="fleet"||!gpsUrl()||document.hidden) return; const a=document.activeElement; if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
+  if(!document.getElementById("modal").hidden) return; gpsLoad(fleetDay||todayISO(),true,true); },30000);
 const tsISO=ts=>{const d=new Date(ts); return localISO(d)+"T"+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");};
+const ZKIND={mine:"معدن",fuel:"جایگاه سوخت",site:"پروژه"};
+const hasMine=()=>!!(gps.st&&(gps.st.zones||[]).some(z=>z.kind==="mine"));
+const gZone=(g,k)=>(g.zones||[]).find(z=>z.kind===k);
+/* برای کمپرسی‌ها، وقتی معدن تعریف شده، فقط سفری سرویس است که به معدن رسیده باشد */
+const geoM=(a,b,c,d)=>{const t=Math.PI/180,x=(d-b)*t*Math.cos((a+c)*t/2),y=(c-a)*t; return Math.sqrt(x*x+y*y)*6371000;};
+/* سفرهای قبل از تعریف معدن اطلاعات محدوده ندارند؛ برای آن‌ها محل طولانی‌ترین توقف ملاک است */
+const gpsAtMine=g=>!!gZone(g,"mine")||(!!g.dest&&(gps.st.zones||[]).some(z=>z.kind==="mine"&&geoM(g.dest[0],g.dest[1],z.lat,z.lon)<=z.r*1.5));
+const gpsIsSvc=g=>{const m=gpsMach(g.code); return !(isHaul(m)&&hasMine())||gpsAtMine(g);};
+async function saveZones(list){ await gpsGet("/gps/zones",{zones:list}); await gpsLoad(fleetDay||todayISO(),true); }
+/* ---------- نقشه‌ی زنده: کاشی‌های نقشه + نقطه‌ی هر دستگاه، بدون کتابخانه‌ی بیرونی ---------- */
+const gmap={z:0,la:0,lo:0,sel:""};
+const mercX=(lo,z)=>(lo+180)/360*256*Math.pow(2,z);
+const mercY=(la,z)=>{const r=la*Math.PI/180; return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*256*Math.pow(2,z);};
+const unX=(x,z)=>x/(256*Math.pow(2,z))*360-180;
+const unY=(y,z)=>Math.atan(Math.sinh(Math.PI*(1-2*y/(256*Math.pow(2,z)))))*180/Math.PI;
+const gKey=d=>String(d.code||d.src+d.di);
+function gmapFit(all){ const st=gps.st; if(!st) return; const el=document.getElementById("gmap"), W=el?el.clientWidth||340:340, H=el?el.clientHeight||320:320;
+  let P=st.devices.filter(d=>d.state!=="آفلاین"&&(all||d.dist<60000)).map(d=>[d.la,d.lo]); P.push([st.plant.lat,st.plant.lon]);
+  const la0=Math.min(...P.map(p=>p[0])), la1=Math.max(...P.map(p=>p[0])), lo0=Math.min(...P.map(p=>p[1])), lo1=Math.max(...P.map(p=>p[1]));
+  let z=16; for(;z>5;z--){ if(Math.abs(mercX(lo1,z)-mercX(lo0,z))<W-70&&Math.abs(mercY(la0,z)-mercY(la1,z))<H-70) break; }
+  gmap.z=z; gmap.la=(la0+la1)/2; gmap.lo=(lo0+lo1)/2; }
+function gmapDraw(){ const el=document.getElementById("gmap"), st=gps.st; if(!el||!st) return;
+  if(!gmap.z) gmapFit(false);
+  const W=el.clientWidth||340, H=el.clientHeight||320, z=gmap.z, cx=mercX(gmap.lo,z), cy=mercY(gmap.la,z), x0=cx-W/2, y0=cy-H/2, n=Math.pow(2,z);
+  const tpl=(LS.get("gpsCfg",{})||{}).tiles||"https://tile.openstreetmap.org/{z}/{x}/{y}.png", px=(la,lo)=>[mercX(lo,z)-x0,mercY(la,z)-y0];
+  const mpp=156543.03*Math.cos(gmap.la*Math.PI/180)/n; let h="";
+  for(let tx=Math.floor(x0/256);tx<=Math.floor((x0+W)/256);tx++) for(let ty=Math.floor(y0/256);ty<=Math.floor((y0+H)/256);ty++){ if(ty<0||ty>=n) continue;
+    h+=`<img alt="" draggable="false" src="${tpl.replace("{z}",z).replace("{x}",((tx%n)+n)%n).replace("{y}",ty)}" onerror="this.style.visibility='hidden'" style="position:absolute;left:${Math.round(tx*256-x0)}px;top:${Math.round(ty*256-y0)}px;width:256px;height:256px;pointer-events:none;user-select:none">`; }
+  const ring=(la,lo,r,col,lab)=>{const [x,y]=px(la,lo), R=Math.max(5,r/mpp); return `<div style="position:absolute;left:${x-R}px;top:${y-R}px;width:${2*R}px;height:${2*R}px;border-radius:50%;border:2px solid ${col};background:${col}22;pointer-events:none"></div><div style="position:absolute;left:${x+R+3}px;top:${y-8}px;font-size:11px;font-weight:700;color:${col};text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;pointer-events:none">${esc(lab)}</div>`;};
+  h+=ring(st.plant.lat,st.plant.lon,st.plant.r,"#2563eb","کارخانه");
+  (st.zones||[]).forEach(q=>{h+=ring(q.lat,q.lon,q.r,q.kind==="mine"?"#b45309":q.kind==="fuel"?"#dc2626":"#7c3aed",q.name);});
+  [...st.devices].sort((a,b)=>(a.state==="در حرکت")-(b.state==="در حرکت")).forEach(d=>{ const [x,y]=px(d.la,d.lo); if(x<-20||y<-20||x>W+20||y>H+20) return;
+    const k=gKey(d), on=gmap.sel===k, col=d.state==="در حرکت"?"#16a34a":d.state==="آفلاین"?"#9ca3af":"#111827", m=gpsMach(d.code), R=on?9:6;
+    h+=`<button data-gsel="${esc(k)}" title="${esc(m?m.name:d.plate)}" style="position:absolute;left:${x-R}px;top:${y-R}px;width:${2*R}px;height:${2*R}px;min-height:0;padding:0;border-radius:50%;background:${col};border:2px solid #fff;box-shadow:0 0 0 ${on?3:1}px ${on?"#f59e0b":"#0006"};z-index:${on?5:d.state==="در حرکت"?4:3}"></button>`;
+    if(on) h+=`<div style="position:absolute;left:${x+12}px;top:${y-9}px;font-size:12px;font-weight:700;background:#fff;color:#111;padding:1px 6px;border-radius:6px;box-shadow:0 1px 4px #0005;white-space:nowrap;z-index:6;pointer-events:none">${esc(m?m.name:(d.name||d.plate||""))}</div>`; });
+  h+=`<div style="position:absolute;left:4px;bottom:2px;font-size:9px;color:#333;background:#fffa;padding:0 4px;border-radius:4px;pointer-events:none">© OpenStreetMap</div>`;
+  el.innerHTML=h;
+  if(!el._bound){ el._bound=1; let p0=null, raf=0;
+    el.addEventListener("pointerdown",e=>{ if(e.target.closest("button")) return; p0={x:e.clientX,y:e.clientY,cx:mercX(gmap.lo,gmap.z),cy:mercY(gmap.la,gmap.z)}; try{el.setPointerCapture(e.pointerId);}catch(_){} });
+    el.addEventListener("pointermove",e=>{ if(!p0) return; gmap.lo=unX(p0.cx-(e.clientX-p0.x),gmap.z); gmap.la=unY(p0.cy-(e.clientY-p0.y),gmap.z); if(!raf) raf=requestAnimationFrame(()=>{raf=0; gmapDraw();}); });
+    const end=()=>{p0=null;}; el.addEventListener("pointerup",end); el.addEventListener("pointercancel",end); } }
+function gmapBox(){ const d=gps.st&&gps.st.devices.find(x=>gKey(x)===gmap.sel), m=d&&gpsMach(d.code);
+  setTimeout(gmapDraw,0);
+  return `<div id="gmap" style="position:relative;height:330px;overflow:hidden;border-radius:12px;background:#dfe7ec;touch-action:none;margin-top:8px;direction:ltr"></div>
+   <div class="row" style="margin-top:6px"><button class="ghost" data-gz="1">+</button><button class="ghost" data-gz="-1">−</button><button class="ghost" data-gfit="plant">کارخانه</button><button class="ghost" data-gfit="near">ناوگان</button><button class="ghost" data-gfit="all">همه</button></div>
+   <div class="m" style="margin-top:4px">${d?`<b>${esc(m?m.name:(d.name||d.plate))}</b> • ${esc(d.state)}${d.state==="در حرکت"?" • "+fa(d.s)+" کیلومتر بر ساعت":""}${d.inPlant?" • در کارخانه":" • "+f1(d.dist/1000)+" کیلومتر از کارخانه"}${d.lastData?" • "+esc(d.lastData):""}`:"روی هر نقطه بزن تا نام دستگاه را ببینی. سبز: در حرکت، مشکی: متوقف، خاکستری: آفلاین."}</div>`;}
+/* توقف‌گاه‌های پرتکرار کمپرسی‌ها در ۱۴ روز اخیر، برای پیدا کردن معدن و جایگاه سوخت */
+async function gpsStops(){ const t=todayISO(), r=await gpsGet("/gps/trips?from="+addDays(t,-13)+"&to="+t), by={};
+  for(const g of r.trips||[]){ if(!g.dest||!(g.stopMin>=3)) continue; const m=gpsMach(g.code);
+    const k=(Math.round(g.dest[0]/0.004)*0.004).toFixed(3)+"|"+(Math.round(g.dest[1]/0.004)*0.004).toFixed(3), o=by[k]||(by[k]={n:0,haul:0,la:0,lo:0,min:0});
+    o.n++; o.la+=g.dest[0]; o.lo+=g.dest[1]; o.min+=g.stopMin; if(isHaul(m)) o.haul++; }
+  gps.stops=Object.values(by).map(o=>({n:o.n,haul:o.haul,la:+(o.la/o.n).toFixed(5),lo:+(o.lo/o.n).toFixed(5),min:Math.round(o.min/o.n)})).sort((a,b)=>b.haul-a.haul||b.n-a.n).slice(0,8); }
 /* سرویس‌های GPS که هیچ سرویس ثبت‌شده‌ای هم‌زمانشان نیست */
-function gpsUnreg(day){ return (gps.day===day&&gps.trips||[]).filter(g=>{ const m=gpsMach(g.code); if(!m) return false;
+function gpsUnreg(day){ return (gps.day===day&&gps.trips||[]).filter(g=>{ const m=gpsMach(g.code); if(!m||!gpsIsSvc(g)) return false;
   if(S.trips.some(x=>x.id==="g_"+g.id)) return false;
   return !S.trips.some(x=>x.machineId===m.id&&x.date===g.date&&x.tDepart&&(()=>{const d=new Date(x.tDepart).getTime(); return d>=g.out-30*60000&&d<=g.in;})()); }); }
 function gpsCard(day){ const t=todayISO(), url=gpsUrl(), cf=LS.get("gpsCfg",{})||{};
@@ -652,23 +709,35 @@ function gpsCard(day){ const t=todayISO(), url=gpsUrl(), cf=LS.get("gpsCfg",{})|
     <div class="note">رمز پنل ردیاب فقط روی سرور است. اپ با همان «رمز اپ» بخش تنظیمات به این سرویس وصل می‌شود.</div>
     ${gps.st?`<div class="grid2" style="margin-top:8px"><div><label>عرض جغرافیایی کارخانه</label><input id="gpla" dir="ltr" value="${gps.st.plant.lat}"></div><div><label>طول جغرافیایی</label><input id="gplo" dir="ltr" value="${gps.st.plant.lon}"></div>
      <div><label>شعاع محدوده (متر)</label><input id="gplr" type="number" inputmode="numeric" value="${gps.st.plant.r}"></div><div style="align-self:end"><button class="ghost" id="savePlant" style="width:100%">ذخیره محدوده</button></div></div>
-     <div class="note">خروج از این دایره و برگشت به آن یک سرویس حساب می‌شود.</div>`:""}</details>`;
+     <div class="note">خروج از این دایره و برگشت به آن یک سرویس حساب می‌شود.</div>
+     <h3 style="margin-top:12px">معدن، جایگاه سوخت و پروژه‌ها</h3>
+     ${(gps.st.zones||[]).length?(gps.st.zones||[]).map(q=>`<div class="item"><div class="t">${esc(q.name)}<span class="tag">${ZKIND[q.kind]||q.kind}</span></div><div class="m" dir="ltr" style="text-align:right">${q.lat}, ${q.lon} • ${fa(q.r)} m</div>
+       <div class="row" style="margin-top:6px"><button class="danger" data-zdel="${esc(q.id)}">حذف</button></div></div>`).join(""):'<div class="m">هنوز محدوده‌ای تعریف نشده. تا وقتی معدن تعریف نشود، هر خروج و برگشت کمپرسی یک سرویس حساب می‌شود.</div>'}
+     <div class="grid2" style="margin-top:8px"><div><label>نام محدوده</label><input id="zn" placeholder="مثلاً معدن شماره ۱"></div><div><label>نوع</label><select id="zk"><option value="mine">معدن</option><option value="fuel">جایگاه سوخت</option><option value="site">پروژه</option></select></div>
+      <div><label>عرض جغرافیایی</label><input id="zla" dir="ltr"></div><div><label>طول جغرافیایی</label><input id="zlo" dir="ltr"></div>
+      <div><label>شعاع (متر)</label><input id="zr" type="number" inputmode="numeric" value="400"></div><div style="align-self:end"><button class="primary" id="addZone" style="width:100%">افزودن محدوده</button></div></div>
+     <div class="row" style="margin-top:8px"><button class="ghost" id="gpsStopsBtn">پیدا کردن توقف‌گاه‌های پرتکرار</button></div>
+     ${gps.stops?(gps.stops.length?gps.stops.map(o=>`<div class="item"><div class="t">${fa(o.n)} توقف${o.haul?` • ${fa(o.haul)} بار کمپرسی`:""} • میانگین ${fa(o.min)} دقیقه</div><div class="m" dir="ltr" style="text-align:right">${o.la}, ${o.lo}</div>
+       <div class="row" style="margin-top:6px"><a class="chip" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${o.la},${o.lo}">نقشه</a><button class="ghost" data-zsug="${o.la}|${o.lo}|mine">معدن است</button><button class="ghost" data-zsug="${o.la}|${o.lo}|fuel">جایگاه سوخت است</button></div></div>`).join(""):'<div class="m">در ۱۴ روز اخیر توقف طولانی‌ای بیرون از کارخانه ثبت نشده.</div>'):""}
+     <label style="margin-top:8px">نشانی کاشی‌های نقشه (اختیاری)</label><input id="gpst" dir="ltr" placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png" value="${esc(cf.tiles||"")}">
+     <div class="note">اگر نقشه‌ی زمینه بار نشد، نقطه‌ها و دایره‌ها باز هم نشان داده می‌شوند.</div>`:""}</details>`;
   if(!url) return `<div class="card"><h3>موقعیت زنده (GPS)</h3><div class="empty">سرویس GPS هنوز وصل نشده است.</div>${set}</div>`;
   if(!gps.st) return `<div class="card"><h3>موقعیت زنده (GPS)</h3><div class="${gps.err?"note":"empty"}" style="${gps.err?"color:var(--bad)":""}">${gps.err?esc(gps.err):"در حال دریافت…"}</div>${set}</div>`;
   const mv=d=>d.state==="در حرکت", D=[...gps.st.devices].sort((a,b)=>mv(b)-mv(a)||(a.inPlant-b.inPlant)||a.dist-b.dist), cnt=k=>D.filter(k).length;   // سرعتِ آخرین رکوردِ ردیاب آفلاین معتبر نیست
   const codes=new Set(D.map(d=>String(d.code))), noGps=D.some(d=>!d.plate)?[]:S.machines.filter(m=>m.status!=="غیرفعال"&&TRIP_TYPES.concat(["کشنده"]).includes(m.type)&&!codes.has(String(m.code||"")));
   const off=D.filter(d=>d.state==="آفلاین");
-  const G=gps.day===day?gps.trips:[], by={}; G.forEach(g=>{(by[g.code]=by[g.code]||[]).push(g);});
+  const GA=gps.day===day?gps.trips:[], G=GA.filter(gpsIsSvc), noMine=GA.filter(g=>!gpsIsSvc(g)), by={}; G.forEach(g=>{(by[g.code]=by[g.code]||[]).push(g);});
   const rows=Object.keys(by).map(c=>{const m=gpsMach(c), reg=m?dayTrips(m.id,day).length:0, n=by[c].length; return {c,m,n,reg,min:Math.round(sumBy(by[c],x=>x.min)/n)};}).sort((a,b)=>Math.abs(b.n-b.reg)-Math.abs(a.n-a.reg));
   const regOnly=S.machines.filter(m=>codes.has(String(m.code||""))&&dayTrips(m.id,day).length&&!by[String(m.code)]), un=gpsUnreg(day);
   return `<div class="card"><h3>موقعیت زنده (GPS)${gps.err?'<span class="tag due">قطع</span>':`<span class="tag ok">${fa(gps.st.age||0)} ثانیه پیش</span>`}</h3>
-   ${gps.err?`<div class="note" style="color:var(--bad)">${esc(gps.err)}</div>`:""}
+   ${gps.err?`<div class="note" style="color:var(--bad)">${esc(gps.err)}</div>`:gps.st.error?`<div class="note" style="color:var(--bad)">یکی از دو پنل پاسخ نمی‌دهد — ${esc(gps.st.error)}</div>`:""}
    <div class="kpis"><div class="kpi"><div class="n">${fa(cnt(mv))}</div><div class="l">در حرکت</div></div>
     <div class="kpi"><div class="n">${fa(cnt(d=>d.inPlant))}</div><div class="l">داخل کارخانه</div></div>
     <div class="kpi"><div class="n">${fa(cnt(d=>!d.inPlant&&d.state!=="آفلاین"))}</div><div class="l">بیرون</div></div>
     <div class="kpi"><div class="n" style="${off.length?"color:var(--bad)":""}">${fa(off.length)}</div><div class="l">ردیاب آفلاین</div></div></div>
-   <details style="margin-top:8px" ${D.some(d=>!d.inPlant&&d.state!=="آفلاین")?"open":""}><summary>دستگاه‌ها (${fa(D.length)})</summary>
-    ${D.map(d=>{const m=gpsMach(d.code); return `<div class="item"><div class="t">${esc(m?m.name:(d.plate||"دستگاه "+d.di))}<span class="tag ${mv(d)?"ok":d.state==="آفلاین"?"due":""}">${esc(d.state)}</span>${d.inPlant?'<span class="tag">در کارخانه</span>':""}</div>
+   ${gmapBox()}
+   <details style="margin-top:8px"><summary>دستگاه‌ها (${fa(D.length)})</summary>
+    ${D.map(d=>{const m=gpsMach(d.code); return `<div class="item"><div class="t">${esc(m?m.name:(d.name?d.name+" • ":"")+(d.plate||"دستگاه "+d.di))}<span class="tag ${mv(d)?"ok":d.state==="آفلاین"?"due":""}">${esc(d.state)}</span>${d.inPlant?'<span class="tag">در کارخانه</span>':""}</div>
      <div class="m">${mv(d)?fa(d.s)+" کیلومتر بر ساعت • ":""}${d.inPlant?"":f1(d.dist/1000)+" کیلومتر از کارخانه • "}${esc(d.lastData||"")}${m?"":d.plate?" • در فهرست ماشین‌آلات پیدا نشد":" • پلاک هنوز از پنل نرسیده"}</div>
      <div class="row" style="margin-top:6px"><a class="chip" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${d.la},${d.lo}">نقشه</a></div></div>`}).join("")}</details>
    ${off.length?`<div class="note" style="color:var(--bad);margin-top:6px">${fa(off.length)} ردیاب بیش از ۲۴ ساعت است داده نفرستاده؛ برای این دستگاه‌ها سرویسی از GPS شمرده نمی‌شود.</div>`:""}
@@ -677,6 +746,7 @@ function gpsCard(day){ const t=todayISO(), url=gpsUrl(), cf=LS.get("gpsCfg",{})|
    ${rows.length||regOnly.length?tbl(["دستگاه","GPS","ثبت‌شده","میانگین سیکل (دقیقه)",""],[...rows.map(r=>[esc(r.m?r.m.name:r.c),fa(r.n),fa(r.reg),fa(r.min),r.n===r.reg?'<span class="tag ok">جور</span>':bad(r.reg>r.n?fa(r.reg-r.n)+" سرویس اضافه ثبت شده":fa(r.n-r.reg)+" سرویس ثبت نشده",true)]),
       ...regOnly.map(m=>[esc(m.name),"۰",fa(dayTrips(m.id,day).length),"—",bad("GPS خروجی ندیده",true)])])
      :'<div class="empty">GPS برای این روز خروج و برگشتی ثبت نکرده است.</div>'}
+   ${noMine.length?`<div class="note" style="margin-top:6px">${fa(noMine.length)} خروج کمپرسی بدون رسیدن به معدن بود و سرویس حساب نشد: ${[...new Set(noMine.map(g=>esc((gpsMach(g.code)||{}).name||g.code)))].join("، ")}</div>`:""}
    ${un.length?`<div class="row" style="margin-top:8px"><button class="primary" data-gpsimp="${day}">ثبت ${fa(un.length)} سرویس کشف‌شده</button></div><div class="note">فقط سرویس‌هایی ثبت می‌شوند که هیچ سرویس دستیِ هم‌زمانی ندارند. میکسر با ${fa(MIXER_M3)} متر ثبت می‌شود و قابل ویرایش است.</div>`:""}
    <div class="row" style="margin-top:8px"><button class="ghost" id="gpsRef">تازه‌سازی</button></div>
    ${set}</div>`;}
@@ -1010,7 +1080,7 @@ const isDump=mid=>{const m=S.machines.find(x=>x.id===mid); return !!m&&DUMP.incl
 const pad2n=v=>String(+v||0).padStart(2,"0");
 const fuelMinOf=x=>(x.cause==="سوخت‌گیری"&&!x.linked)?(+x.minutes||0):0;
 const normPhone=n=>{const d=toEn(String(n||"")).replace(/\D/g,""); return d.length>10?d.slice(-10):d;};
-const contactOf=ph=>{const k=normPhone(ph); return S.contacts.find(c=>normPhone(c.phone)===k);};
+const contactOf=ph=>{const k=normPhone(ph); return k?S.contacts.find(c=>normPhone(c.phone)===k):undefined;};
 const smsMin=x=>(x.type==="stop"||x.type==="fault")?(+x.minutes||0):0;
 async function pushWatch(){const P=SMSP(); if(!P) return; try{ await P.setWatchList({drivers:S.contacts.map(c=>({phone:c.phone,name:c.name})),notify:LS.get("smsNotify",true)}); }catch(e){}}
 function smsRule(body){const t=toEn(body||""); let type="report", cause=null, minutes=null;
@@ -1120,9 +1190,14 @@ function vSms(){const P=SMSP(), t=todayISO(), a=smsAgg(addDays(t,-29),t), tot=su
    ${a.drivers.map(o=>`<tr><td>${esc(o.d)}</td><td>${fa(o.n)}</td><td>${fa(o.f)}</td><td>${fa(o.st)}</td><td>${fa(o.inc)}</td></tr>`).join("")}</table></div></div>`:""}
   ${a.cause.length?`<div class="card"><h3>علت توقف‌های گزارش‌شده (۳۰ روز)</h3>${a.cause.map(([k,v])=>`<div class="par"><div class="pl">${esc(k)}</div><div class="bar"><i style="width:${Math.round(v/mx*100)}%"></i></div>
    <div class="pv">${fa(v)} دقیقه • ${fa(Math.round(v/tot*100))}٪</div></div>`).join("")}</div>`:""}
-  <div class="card"><h3>رانندگان و شماره‌ها (${fa(S.contacts.length)})</h3>
-   ${S.contacts.map(c=>`<div class="item"><div class="t">${esc(c.name)}</div><div class="m" dir="ltr" style="text-align:right">${esc(c.phone)}</div>
-    <div class="m">${c.machineId?esc(mName(c.machineId)):"بدون دستگاه"}</div><div class="row" style="margin-top:6px"><button class="danger" data-condel="${c.id}">حذف</button></div></div>`).join("")}
+  <div class="card"><h3>رانندگان و شماره‌ها (${fa(S.contacts.length)})${S.contacts.some(c=>!normPhone(c.phone))?`<span class="tag due">${fa(S.contacts.filter(c=>!normPhone(c.phone)).length)} بدون شماره</span>`:""}</h3>
+   ${S.contacts.some(c=>!normPhone(c.phone))?'<div class="note" style="margin-bottom:6px">پیامک فقط از شماره‌هایی خوانده می‌شود که اینجا ثبت شده باشند. برای هر نفر «ویرایش» را بزن و شماره را وارد کن.</div>':""}
+   ${[...S.contacts].sort((a,b)=>(!!normPhone(a.phone))-(!!normPhone(b.phone))).map(c=>`<div class="item"><div class="t">${esc(c.name)}${normPhone(c.phone)?"":'<span class="tag due">بدون شماره</span>'}${c.active===false?'<span class="tag">غیرفعال</span>':""}</div>${normPhone(c.phone)?`<div class="m" dir="ltr" style="text-align:right">${esc(c.phone)}</div>`:""}
+    <div class="m">${esc(roleOf(c))} • ${c.machineId?esc(mName(c.machineId)):"بدون دستگاه"}</div><div class="row" style="margin-top:6px"><button class="primary" data-conedit="${c.id}">ویرایش</button><button class="danger" data-condel="${c.id}">حذف</button></div></div>`).join("")}
+   <details><summary>ورود گروهی شماره‌ها</summary>
+    <label>هر خط: نام یا کد ماشین، و شماره‌ی موبایل</label><textarea id="bph" rows="6" dir="auto" placeholder="پیمان اعتصامی 09121234567&#10;74613 09121234567"></textarea>
+    <div class="row" style="margin-top:8px"><button class="primary" id="bulkPh">ثبت شماره‌ها</button></div>
+    <div class="note">نام باید با نام ثبت‌شده در فهرست بخواند؛ اگر کد پنج‌رقمی ماشین را بنویسی، شماره برای راننده‌ی همان ماشین ثبت می‌شود.</div></details>
    <details ${S.contacts.length?"":"open"}><summary>افزودن راننده</summary>
     <div class="grid2"><div><label>نام راننده</label><input id="cnm"></div><div><label>شماره موبایل</label><input id="cph" type="tel" dir="ltr" placeholder="0912..."></div></div>
     <label>دستگاه</label><select id="cmc"><option value="">—</option>${S.machines.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select>
@@ -2595,14 +2670,50 @@ document.addEventListener("click",async e=>{
     if(!ts[0]) return alert("ساعت حرکت لازم است.");
     await save("trips",Object.assign({},tr,{site:gv("esite"),volume:+toEn(gv("evol"))||0,driver:gv("edrv"),tDepart:ts[0],tArrive:ts[1],tUnload:ts[2],tReturn:ts[3],
       stage:ts[3]?4:ts[2]?3:ts[1]?2:1})); modalClose(); return; }
-  if(b.id==="saveGps"){ LS.set("gpsCfg",{url:gv("gpsu").trim()}); gps.st=null; gps.err=""; gps.at=0; render(); return; }
+  if(b.id==="saveGps"){ const te=document.getElementById("gpst"); LS.set("gpsCfg",{url:gv("gpsu").trim(),tiles:te?te.value.trim():((LS.get("gpsCfg",{})||{}).tiles||"")}); gps.st=null; gps.err=""; gps.at=0; render(); return; }
   if(b.id==="gpsRef"){ gpsLoad(fleetDay||todayISO(),true); return; }
   if(b.id==="savePlant"){ try{ await gpsGet("/gps/plant",{lat:+toEn(gv("gpla")),lon:+toEn(gv("gplo")),r:+toEn(gv("gplr"))}); alert("محدوده‌ی کارخانه ذخیره شد."); gpsLoad(fleetDay||todayISO(),true); }catch(e){ alert(e.message); } return; }
   if(b.dataset.gpsimp){ const un=gpsUnreg(b.dataset.gpsimp); if(!un.length||!confirm(fa(un.length)+" سرویس از روی GPS ثبت شود؟")) return;
     for(const g of un){ const m=gpsMach(g.code); if(!m) continue;
-      await save("trips",{id:"g_"+g.id,date:g.date,machineId:m.id,driver:m.driver||"",site:"",kind:tripKindOf(m),material:"",tons:0,volume:m.type==="میکسر"?MIXER_M3:0,
+      await save("trips",{id:"g_"+g.id,date:g.date,machineId:m.id,driver:m.driver||"",site:(gZone(g,"mine")||gZone(g,"site")||(isHaul(m)&&hasMine()?(gps.st.zones||[]).find(z=>z.kind==="mine"):null)||{}).name||"",gpsFuelMin:(gZone(g,"fuel")||{}).min||0,kind:tripKindOf(m),material:"",tons:0,volume:m.type==="میکسر"?MIXER_M3:0,
         tDepart:tsISO(g.out),tReturn:tsISO(g.in),stage:4,src:"gps",gpsKm:g.km,gpsStop:g.stopMin,gpsDest:g.dest}); }
     return; }
+  if(b.dataset.gsel){ gmap.sel=gmap.sel===b.dataset.gsel?"":b.dataset.gsel; render(); return; }
+  if(b.dataset.gz){ gmap.z=Math.max(5,Math.min(18,gmap.z+(+b.dataset.gz))); gmapDraw(); return; }
+  if(b.dataset.gfit){ if(b.dataset.gfit==="plant"&&gps.st){ gmap.la=gps.st.plant.lat; gmap.lo=gps.st.plant.lon; gmap.z=15; } else gmapFit(b.dataset.gfit==="all"); gmapDraw(); return; }
+  if(b.id==="addZone"){ const q={name:gv("zn").trim(),kind:gv("zk"),lat:+toEn(gv("zla")),lon:+toEn(gv("zlo")),r:+toEn(gv("zr"))||400};
+    if(!q.name) return alert("نام محدوده را وارد کنید.");
+    try{ await saveZones([...(gps.st.zones||[]),q]); }catch(e){ alert(e.message); } return; }
+  if(b.dataset.zdel){ if(!confirm("این محدوده حذف شود؟")) return; try{ await saveZones((gps.st.zones||[]).filter(q=>q.id!==b.dataset.zdel)); }catch(e){ alert(e.message); } return; }
+  if(b.id==="gpsStopsBtn"){ try{ await gpsStops(); render(); }catch(e){ alert(e.message); } return; }
+  if(b.dataset.zsug){ const [la,lo,k]=b.dataset.zsug.split("|"), nm=prompt("نام این محدوده؟",k==="mine"?"معدن":"جایگاه سوخت"); if(!nm) return;
+    try{ await saveZones([...(gps.st.zones||[]),{name:nm.trim(),kind:k,lat:+la,lon:+lo,r:k==="mine"?600:250}]); }catch(e){ alert(e.message); } return; }
+  if(b.id==="bulkPh"){ const norm=x=>toEn(String(x||"")).replace(/ي/g,"ی").replace(/ك/g,"ک").replace(/[\s\u200c.\-_,،:;()]+/g,""), ups=[], bad=[], used=new Set(S.contacts.map(c=>normPhone(c.phone)).filter(Boolean));
+    for(const ln of gv("bph").split(/\n/)){ const t=toEn(ln).trim(); if(!t) continue;
+      const pm=/(?:\+98|0098|98|0)?9\d{2}[\s-]?\d{3}[\s-]?\d{4}/.exec(t); if(!pm){ bad.push(ln.trim()); continue; }
+      const ph="0"+pm[0].replace(/\D/g,"").slice(-10), rest=t.replace(pm[0]," "), cm=/(^|\D)(\d{5})(\D|$)/.exec(rest), nm=norm(rest.replace(/\d+/g,""));
+      let c=null; if(cm){ const mc=S.machines.find(m=>String(m.code||"")===cm[2]); c=mc&&S.contacts.find(x=>x.machineId===mc.id&&x.active!==false); }
+      if(!c&&nm){ const ex=S.contacts.filter(x=>norm(x.name)===nm), inc=ex.length?ex:S.contacts.filter(x=>norm(x.name).includes(nm)||nm.includes(norm(x.name))); if(inc.length===1) c=inc[0]; }
+      if(!c||used.has(ph.slice(-10))||ups.some(u=>u.id===c.id)){ bad.push(ln.trim()); continue; }
+      used.add(ph.slice(-10)); ups.push(Object.assign({},c,{phone:ph})); }
+    if(!ups.length) return alert("هیچ خطی با پرسنل جور نشد. هر خط باید نام (یا کد ماشین) و شماره‌ی موبایل داشته باشد.");
+    for(const u of ups) await save("contacts",u);
+    alert(fa(ups.length)+" شماره ثبت شد."+(bad.length?"\n"+fa(bad.length)+" خط جور نشد:\n"+bad.slice(0,8).join("\n"):"")); return; }
+  if(b.dataset.conedit){ const c=S.contacts.find(x=>x.id===b.dataset.conedit); if(!c) return;
+    showModal(`<h3 style="margin:0 0 6px">ویرایش ${esc(c.name)}</h3>
+     <label>نام</label><input id="cen" value="${esc(c.name||"")}">
+     <label>شماره موبایل</label><input id="cep" type="tel" inputmode="tel" dir="ltr" placeholder="0912..." value="${esc(c.phone||"")}">
+     <div class="grid2"><div><label>نقش</label><select id="cer">${ROLES.map(r=>`<option ${roleOf(c)===r?"selected":""}>${r}</option>`).join("")}</select></div>
+     <div><label>وضعیت</label><select id="cea"><option value="1" ${c.active===false?"":"selected"}>فعال</option><option value="0" ${c.active===false?"selected":""}>غیرفعال</option></select></div></div>
+     <label>دستگاه</label><select id="cem"><option value="">—</option>${S.machines.map(m=>`<option value="${m.id}" ${m.id===c.machineId?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
+     <div class="row" style="margin-top:9px"><button class="primary" data-consave="${c.id}">ذخیره</button><button class="ghost" data-jdclose="1">انصراف</button></div>`);
+    return; }
+  if(b.dataset.consave){ const c=S.contacts.find(x=>x.id===b.dataset.consave); if(!c) return;
+    const nm=gv("cen").trim(), ph=toEn(gv("cep")).replace(/[^\d+]/g,""), k=normPhone(ph);
+    if(!nm) return alert("نام را وارد کنید."); if(ph&&k.length<10) return alert("شماره موبایل کامل نیست.");
+    const dup=k&&S.contacts.find(x=>x.id!==c.id&&normPhone(x.phone)===k); if(dup) return alert("این شماره قبلاً برای «"+dup.name+"» ثبت شده است.");
+    const n=Object.assign({},c,{name:nm,phone:ph,role:gv("cer"),machineId:gv("cem"),active:gv("cea")==="1"});
+    modalClose(); await save("contacts",n); return; }
   if(b.dataset.sfopen){ const [mid,day]=b.dataset.sfopen.split("|"); sfModal(mid,day); return; }
   if(b.dataset.sfsave){ const [mid,day]=b.dataset.sfsave.split("|"), m=S.machines.find(x=>x.id===mid); if(!m) return;
     const cause=gv("sfc"), old=S.scores.find(x=>x.kind==="shortfall"&&x.machineId===mid&&x.date===day);
@@ -3602,7 +3713,7 @@ render(); load();
   const _render = window.render;
   window.render = function () {
     if (typeof tab === "undefined" || tab !== "imp") return _render();
-    document.getElementById("todayLbl").textContent = jal(todayISO());
+    document.getElementById("todayLbl").textContent = jal(todayISO())+" • نسخه "+APP_BUILD;
     document.getElementById("nav").innerHTML = TABS.map(([k, n]) =>
       `<button data-tab="${k}" class="${k === tab ? "active" : ""}">${n}</button>`).join("");
     document.getElementById("main").innerHTML = vImport();
