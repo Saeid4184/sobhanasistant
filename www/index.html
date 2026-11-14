@@ -164,6 +164,7 @@ details.item>summary{font-size:14px}
       <div class="sub" id="todayLbl">—</div>
     </div>
     <div class="spacer"></div>
+    <button class="icon-btn" id="undoBtn" title="برگشت آخرین عمل">↶</button>
     <button class="icon-btn" id="themeBtn" title="تغییر تم">◐</button>
   </div>
   <nav id="nav"></nav>
@@ -177,7 +178,7 @@ details.item>summary{font-size:14px}
 <script>
 /* ---------- وضعیت ---------- */
 const TABS=[
-  ["dash","داشبورد"],["fleet","ناوگان زنده"],["sms","پیام رانندگان"],["perf","عملکرد پرسنل و ماشین‌آلات"],["check","چک‌لیست و یادآوری"],["mach","ماشین‌آلات و خرابی"],["pm","تعمیر و نگهداری"],["wash","کارواش و زیباسازی"],
+  ["dash","داشبورد"],["fleet","ناوگان زنده"],["sms","پیامک و پرسنل"],["perf","عملکرد پرسنل و ماشین‌آلات"],["check","چک‌لیست و یادآوری"],["mach","ماشین‌آلات و خرابی"],["pm","تعمیر و نگهداری"],["wash","کارواش و زیباسازی"],
   ["batch","بچینگ و تولید"],["mat","مواد اولیه"],["plan","برنامه کارخانه"],["dir","دستورات مدیر"],["safety","ایمنی و حوادث"],["notes","یادداشت و ایده‌ها"],["rep","گزارش و نمودار"],["ai","دستیار و پیشنهادها"],["set","تنظیمات"]
 ];
 const MTYPES=["میکسر","پمپ بتن","کشنده","لودر","کمپرسی","کمپرسی تریلی","بچینگ","دیزل ژنراتور","تانکر آب","سایر"];
@@ -185,7 +186,7 @@ const DUMP=["کمپرسی","کمپرسی تریلی"];
 let tab = (location.hash||"#dash").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="dash";
 
-const APP_BUILD="۲۳ آبان — ۲";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const APP_BUILD="۲۳ آبان — ۴";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
 const COLS=["machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos"];
 const S={machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -1060,7 +1061,7 @@ function vNotes(){const ns=[...S.notes].sort((a,b)=>((b.date||"")+(b.time||"")).
 async function serverCall(pth,opt){const cfg=LS.get("cfg",{}); if(!cfg.url||!cfg.token) throw new Error("ابتدا در تنظیمات آدرس سرور و رمز را وارد کنید.");
   const r=await fetch(cfg.url.replace(/\/+$/,"")+pth,Object.assign({},opt,{headers:{"x-app-token":cfg.token,"content-type":"application/json"}}));
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||("کد خطا "+r.status)); return j;}
-const SET_KEYS=["kpiT","minStock","capM3h","planH","cycleStd","moist","washRot","seeded","wageMonth","gpsCfg"];
+const SET_KEYS=["kpiT","minStock","capM3h","planH","cycleStd","moist","washRot","seeded","wageMonth","gpsCfg","smsAuto"];
 function backupObj(){const data={}; COLS.forEach(c=>data[c]=S[c]); const settings={}; SET_KEYS.forEach(k=>settings[k]=LS.get(k,null));
   return {app:"sobhan-beton",v:2,date:todayISO(),at:new Date().toISOString(),data,settings};}
 async function serverBackup(silent){try{ await serverCall("/backup",{method:"POST",body:JSON.stringify(backupObj())}); LS.set("lastBk",Date.now()); if(!silent){alert("پشتیبان روی سرور ذخیره شد.");render();} return true; }
@@ -1073,38 +1074,115 @@ async function serverRestore(){ if(!confirm("همه داده‌های این گ�
 
 /* ---------- پیام رانندگان (SMS) ---------- */
 const FSTOP=["خرابی","ترافیک / مسیر","صف بارگیری / معدن","انتظار در پروژه","سوخت‌گیری","مدارک / پلیس راه","آب و هوا","استراحت / غذا","سایر"];
-const SMS_T={fault:"خرابی",stop:"توقف",incident:"حادثه / ایمنی",report:"گزارش عمومی"}, SMS_C={fault:"due",stop:"soon",incident:"due",report:""};
+const SMS_T={fault:"خرابی",stop:"توقف",incident:"حادثه / ایمنی",batch:"تولید بچینگ",ready:"آماده‌به‌کار",service:"سرویس دوره‌ای",svcdue:"موعد سرویس",need:"درخواست قطعه",att:"مرخصی / غیبت",wash:"کارواش",trip:"سرویس حمل",job:"کار محوطه",report:"گزارش عمومی"}, SMS_C={fault:"due",stop:"soon",incident:"due",report:"",batch:"ok",ready:"ok",service:"ok",svcdue:"soon",need:"soon",att:"soon",wash:"ok",trip:"ok",job:"ok"};
 let smsF="new", smsBusy=false;
 const SMSP=()=>window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.SmsReader;
 const isDump=mid=>{const m=S.machines.find(x=>x.id===mid); return !!m&&DUMP.includes(m.type);};
 const pad2n=v=>String(+v||0).padStart(2,"0");
 const fuelMinOf=x=>(x.cause==="سوخت‌گیری"&&!x.linked)?(+x.minutes||0):0;
 const normPhone=n=>{const d=toEn(String(n||"")).replace(/\D/g,""); return d.length>10?d.slice(-10):d;};
-const contactOf=ph=>{const k=normPhone(ph); return k?S.contacts.find(c=>normPhone(c.phone)===k):undefined;};
+const contactOf=ph=>{const k=normPhone(ph); return k?S.contacts.find(c=>normPhone(c.phone)===k||normPhone(c.phone2)===k):undefined;};
+const hasPhone=c=>!!(normPhone(c.phone)||normPhone(c.phone2));
 const smsMin=x=>(x.type==="stop"||x.type==="fault")?(+x.minutes||0):0;
-async function pushWatch(){const P=SMSP(); if(!P) return; try{ await P.setWatchList({drivers:S.contacts.map(c=>({phone:c.phone,name:c.name})),notify:LS.get("smsNotify",true)}); }catch(e){}}
-function smsRule(body){const t=toEn(body||""); let type="report", cause=null, minutes=null;
+async function pushWatch(){const P=SMSP(); if(!P) return; try{ await P.setWatchList({drivers:S.contacts.flatMap(c=>[c.phone,c.phone2].filter(p=>normPhone(p)).map(p=>({phone:p,name:c.name}))),notify:LS.get("smsNotify",true)}); }catch(e){}}
+function smsRule(body){const t=toEn(body||"").replace(/(\d{1,2})\s*[:،,.٫]\s*(\d{2})\s*دقیقه/g,"$1:$2"); let type="report", cause=null, minutes=null;
   if(/تصادف|حادثه|آسیب|زخمی|مصدوم|واژگون|چپ کرد|برخورد/.test(t)) type="incident";
-  else if(/خراب|پنچر|ترکید|نشت|روغن|گیربکس|موتور|ترمز|باتری|استارت|کلاچ|جوش آورد|هیدرولیک|جک|خاموش شد|روشن نمی|باد ندار|شکست/.test(t)) type="fault";
+  else if(/خراب|پنچر|ترکید|نشت|روغن|گیربکس|موتور|ترمز|باتری|استارت|کلاچ|جوش آورد|هیدرولیک|جک|خاموش شد|روشن نمی|باد ندار|شکست|رادیاتور|دیاگ|باطری|آب کم|تعمیرگاه|مکانیک|برق|از خط خارج|خارج از خط/.test(t)) type="fault";
   else if(/توقف|معطل|منتظر|ایستاد|انتظار|ترافیک|صف |صف‌|راه بسته|پلیس|سوخت|گازوئیل|ناهار|نهار|استراحت|برف|باران|طوفان/.test(t)) type="stop";
   const h=/(\d+(?:[.\/٫]\d+)?)\s*ساعت/.exec(t), m=/(\d+)\s*(?:دقیقه|دقيقه|min)/.exec(t);
   if(h) minutes=Math.round(parseFloat(h[1].replace(/[\/٫]/,"."))*60); if(m) minutes=(minutes||0)+ +m[1];
   if(minutes==null){ if(/نیم ساعت/.test(t)) minutes=30; else if(/یک ساعت|یه ساعت/.test(t)) minutes=60; else if(/ربع ساعت/.test(t)) minutes=15; }
-  const isFuel=/سوخت|گازوئیل|گازوييل|جایگاه سوخت|پمپ بنزین/.test(t);
+  const isFuel=/سوخت|گازوئیل|گازوييل|گازوییل|جایگاه سوخت|پمپ بنزین/.test(t)||(/\d\s*(?:لیتر|ليتر)/.test(t)&&/مبلغ|تومان/.test(t));
   let liters=null, fromT=null, toT=null;
   const lt=/(\d+(?:[.,٫]\d+)?)\s*(?:لیتر|ليتر|lit)/.exec(t); if(lt) liters=parseFloat(lt[1].replace(/[,٫]/,"."));
   if(isFuel||/ساعت/.test(t)){
     const rg=/(?:از\s*)?(?:ساعت\s*)?(\d{1,2})(?:[:.٫](\d{1,2}))?\s*(?:تا|الی|لغایت|-)\s*(?:ساعت\s*)?(\d{1,2})(?:[:.٫](\d{1,2}))?/.exec(t);
     if(rg&&+rg[1]<24&&+rg[3]<24){const a=+rg[1]*60+(+rg[2]||0), b=+rg[3]*60+(+rg[4]||0); let d=b-a; if(d<0)d+=1440;
-      if(d>0&&d<=360){ fromT=pad2n(rg[1])+":"+pad2n(rg[2]||0); toT=pad2n(rg[3])+":"+pad2n(rg[4]||0); if(minutes==null) minutes=d; }}}
+      if(d>0&&d<=960){ fromT=pad2n(rg[1])+":"+pad2n(rg[2]||0); toT=pad2n(rg[3])+":"+pad2n(rg[4]||0); if(minutes==null) minutes=d; }}}
   if(isFuel) return {type:"stop",cause:"سوخت‌گیری",minutes,fuel:true,liters,fromT,toT};
   if(type==="fault") cause="خرابی";
   if(type==="stop") cause=/ترافیک|راه بسته|مسیر/.test(t)?"ترافیک / مسیر":/صف|معدن|بارگیری/.test(t)?"صف بارگیری / معدن":/پروژه|کارفرما|منتظر/.test(t)?"انتظار در پروژه":
     /سوخت|گازوئیل/.test(t)?"سوخت‌گیری":/پلیس|مدارک|جریمه|توقیف/.test(t)?"مدارک / پلیس راه":/برف|باران|طوفان/.test(t)?"آب و هوا":/نهار|ناهار|استراحت|نماز/.test(t)?"استراحت / غذا":"سایر";
   return {type,cause,minutes};}
-function smsRecord(id,ts,phone,body){const c=contactOf(phone), d=new Date(+ts), r=smsRule(body);
-  return {id,ts:+ts,date:localISO(d),time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"),phone:normPhone(phone),
-    contactId:c?c.id:"",driver:c?c.name:"",machineId:c?(c.machineId||""):"",body,type:r.type,cause:r.cause,minutes:r.minutes,fuel:!!r.fuel,liters:r.liters||null,fromT:r.fromT||"",toT:r.toT||"",status:"new",ai:false};}
+/* ---------- تحلیل پیامک: نوع گزارش، دستگاه، و ثبت خودکار ---------- */
+const SMS_BTN={batch:"ثبت در تولید بچینگ",fuel:"ثبت سوخت‌گیری",fault:"ثبت در خرابی‌ها",incident:"ثبت در ایمنی",ready:"ثبت آماده‌به‌کار",service:"ثبت سرویس دوره‌ای",svcdue:"ثبت در برنامه‌ی نگهداری",att:"ثبت در حضور و غیاب",need:"ثبت درخواست قطعه",wash:"ثبت کارواش",trip:"ثبت سرویس‌ها",job:"ثبت کار محوطه",stopnote:"تأیید توقف"};
+const FA_NUM={"یک":1,"یه":1,"دو":2,"سه":3,"چهار":4,"پنج":5,"شش":6,"شیش":6,"هفت":7,"هشت":8};
+const UNIT_AFTER="(?!\\s*(?:لیتر|ليتر|متر|تن|هزار|تومان|ریال|دقیقه|ساعت|کیلو|کلیو|سرویس|km|[:.،,\\/٫]\\s*\\d))";
+function smsMachine(body,c){ const t=toEn(body||"");
+  for(const k of t.match(/(?<!\d)\d{5}(?!\d)/g)||[]){ const mc=S.machines.find(x=>String(x.code||"")===k); if(mc) return mc.id; }
+  /* کد کوتاه: سه یا چهار رقم آخر پلاک، مثل 763 برای 69763 */
+  for(const m of t.matchAll(new RegExp("(?<![\\d:.،,\\/٫]|ساعت\\s{0,2})(\\d{3,4})(?!\\d)"+UNIT_AFTER,"g"))){ const hit=S.machines.filter(x=>String(x.code||"").length>m[1].length&&String(x.code).endsWith(m[1])); if(hit.length===1) return hit[0].id; }
+  const mc=plantByLetter(plantLetter(t)); if(mc) return mc.id;
+  return c?(c.machineId||""):""; }
+const ORD_HI={"یازدهم":11,"دوازدهم":12,"سیزدهم":13,"چهاردهم":14,"پانزدهم":15,"شانزدهم":16,"هفدهم":17,"هیفدهم":17,"هجدهم":18,"هیجدهم":18,"هژدهم":18,"نوزدهم":19,"بیستم":20,"سی ام":30,"سی‌ام":30};
+const ORD_LO={"اول":1,"یکم":1,"دوم":2,"سوم":3,"چهارم":4,"پنجم":5,"ششم":6,"هفتم":7,"هشتم":8,"نهم":9,"دهم":10};
+/* روزی که گزارش به آن مربوط است، اگر در متن آمده باشد («مورخه هیجدهم»، «نوزدهم»، «تاریخ 8/19») */
+function smsDay(t,base){ let d=0, m; const mk=dateMarks(t,base); if(mk.length) return mk[0].date;
+  if((m=/بیست\s*و\s*(یکم|دوم|سوم|چهارم|پنجم|ششم|هفتم|هشتم|نهم)/.exec(t))) d=20+ORD_LO[m[1]];
+  else if(/سی\s*و\s*یکم/.test(t)) d=31;
+  else for(const k in ORD_HI) if(t.includes(k)){ d=ORD_HI[k]; break; }
+  if(!d&&(m=/(?:مورخ[هۀ]?|تاریخ|روز)\s*(اول|یکم|دوم|سوم|چهارم|پنجم|ششم|هفتم|هشتم|نهم|دهم)(?![ء-ی])/.exec(t))) d=ORD_LO[m[1]];
+  if(!d&&(m=/(?:مورخ[هۀ]?|تاریخ)\s*[:：]?\s*(\d{1,2})(?:\s*ام|م)?(?![\d.\/])/.exec(t))) d=+m[1];
+  if(!(d>=1&&d<=31)) return "";
+  const bj=isoToJ(base); let jy=bj.jy, jm=bj.jm; if(d>bj.jd+1){ jm--; if(jm<1){ jm=12; jy--; } }
+  try{ return jToIso(jy,jm,d); }catch(e){ return ""; } }
+const hm2=v=>pad2n(Math.floor(v/60)%24)+":"+pad2n(v%60);
+function fuelParse(t){ const o={}; let m;
+  if((m=/(\d+(?:[.,٫]\d+)?)\s*(?:لیتر|ليتر|lit)/.exec(t))) o.liters=numFa(m[1]);
+  if((m=/(\d+(?:[.,٫]\d+)?)\s*هزار\s*تومان/.exec(t))) o.cost=Math.round(numFa(m[1])*1000);
+  else if((m=/مبلغ\s*[:：]?\s*(\d[\d,٬]*)\s*(تومان|ریال)?/.exec(t))){ const v=+m[1].replace(/[,٬]/g,""); o.cost=m[2]==="ریال"?Math.round(v/10):v; }
+  if((m=/(?:جایگاه|پمپ)\s+(?!گازوئیل|گازوییل|بنزین|سوخت)([ء-ی‌]+(?:\s+(?!ساعت|مبلغ|مورخ|تاریخ|لیتر|زدم)[ء-ی‌]+)?)/.exec(t))) o.station=m[1].trim();
+  const T=[]; for(const k of t.matchAll(/ساعت[^\d\n]{0,28}?[:：]?\s*(\d{1,2})(?:\s*[:.،,٫]\s*(\d{2})(?!\d))?(?:\s*دقیقه)?\s*(صبح|ظهر|عصر|شب|بعد\s*از\s*ظهر)?/g)){
+    let h=+k[1]; const mi=+k[2]||0; if(h>23||mi>59) continue; if(k[3]&&/عصر|شب|بعد/.test(k[3])&&h>=1&&h<12&&!(k[3]==="شب"&&h<5)) h+=12; T.push(h*60+mi); }
+  if(T.length) o.fromT=hm2(T[0]);
+  if(T.length>=2&&/ورود|خروج/.test(t)){ let d=T[1]-T[0]; if(d<0) d+=1440; if(d>0&&d<=600){ o.toT=hm2(T[1]); o.minutes=d; } }
+  return o; }
+function spanMin(t){ const a=/از\s*(?:ساعت\s*)?(\d{1,2})(?:\s*[:.،,٫]\s*(\d{2}))?/.exec(t), E=[...t.matchAll(/(?:تا|الی|لغایت)\s*(?:ساعت\s*)?(\d{1,2})(?:\s*[:.،,٫]\s*(\d{2}))?/g)];
+  if(!a||!E.length) return null; const e=E[E.length-1]; let d=(+e[1]*60+(+e[2]||0))-(+a[1]*60+(+a[2]||0)); if(d<0) d+=1440; return d>0&&d<=960?d:null; }
+const smsTitle=b=>(String(b||"").replace(/^\s*(?:با\s*)?سلام(?:\s*(?:علیکم|و\s*عرض\s*ادب|و\s*احترام))?[\s،,.]*(?:(?:صبح|ظهر|عصر|شب|وقت|روز)[^\n،,.]{0,22}?بخیر|خسته\s*نباشید)?[\s،,.\n]*/,"").split("\n").map(x=>x.trim()).filter(Boolean)[0]||String(b||"").trim()).slice(0,70);
+function smsAnalyze(body,c){ const t=toEn(body||"").replace(/ي/g,"ی").replace(/ك/g,"ک"), r=smsRule(body), role=c?roleOf(c):"", out=Object.assign({},r);
+  const set=(type,extra)=>Object.assign(out,{type,cause:null},extra||{});
+  if(r.type==="incident") return out;
+  const segs=batchSmsParse(body,todayISO());
+  if((segs.some(g=>g.volume>0)||(segs.some(g=>g.letter||g.reps.length)&&r.type!=="fault"))&&(role==="اپراتور بچینگ"||BATCH_KW.test(t))) return set("batch",{fuel:false,minutes:null});
+  out.rdate=smsDay(t,todayISO());
+  if(r.fuel){ const f=fuelParse(t); return Object.assign(out,{liters:f.liters||r.liters||null,cost:f.cost||0,station:f.station||"",fromT:f.toT?f.fromT:(r.toT?r.fromT:(f.fromT||"")),toT:f.toT||r.toT||"",minutes:f.minutes||((r.toT||/معطل|صف|طول کشید|توقف|منتظر/.test(t))?r.minutes:null)}); }
+  if(/آماده\s*(?:به|ب)?\s*کار|تعمیر\S*\s*(?:شد|تمام)|درست شد|رفع شد|راه افتاد|از تعمیرگاه\s*(?:خارج|بیرون|تحویل)|(?:اومد|آمد|امد|برگشت|وارد شد)\s*(?:به\s*|تو\s*|توی\s*|داخل\s*)?خط|تو\s*خط|توخط/.test(t)) return set("ready",{minutes:null});
+  let m=/روغن[^\n]{0,40}?(\d{3,6})\s*(?:کیلومتر|کلیومتر|کیلو\s*متر|km)/.exec(t);
+  if(m&&/کارکرد|کار کرد/.test(t)) return set("svcdue",{km:+m[1],minutes:null});
+  if(/تعویض روغن|روغن\S*\s*(?:عوض|تعویض)\s*شد|سرویس دوره|سرویس کامل|فیلتر\S*\s*(?:عوض|تعویض)|گریس\s*کاری|گریسکاری/.test(t)) return set("service");
+  if(/مرخصی|غیبت|استعلاجی|نمیام|نمی\s*آیم|نمی‌آیم|نمی\s*(?:تونم|توانم)\s*(?:بیام|بیایم)|مریض|بیمار/.test(t))
+    return set("att",{att:/استعلاجی|مریض|بیمار|دکتر/.test(t)?"مرخصی استعلاجی":/ساعتی/.test(t)?"مرخصی ساعتی":/غیبت/.test(t)?"غیبت":"مرخصی استحقاقی"});
+  if(/نیاز\s*(?:به|ب)\s|نیاز\s*(?:دار|است|هست)|لازم\s*(?:دار|است|هست)|لازمه|خرید\S*\s*شود|تهیه\s*شود|تمام شده|تموم شده/.test(t)&&!/خراب/.test(t)) return set("need");
+  if(r.type==="fault"){ const sp=spanMin(t); if(sp&&(out.minutes==null||sp>out.minutes)) out.minutes=sp;
+    out.sleep=/از خط خارج|خارج از خط|خوابید|پارک[\s‌]*کرد|خراب\S*\s*(?:در|تو|وسط)\s*(?:جاده|راه|مسیر)|زمین\s*گیر/.test(t); return out; }
+  if(/کارواش|شست|شسته|اسیدشویی|بتن‌زدایی|بتن زدایی/.test(t)) return set("wash");
+  const tm=/(\d{1,2}|یک|یه|دو|سه|چهار|پنج|شش|شیش|هفت|هشت)\s*(?:تا\s*)?(?:سرویس|سفر)/.exec(t), n=tm?(FA_NUM[tm[1]]||+tm[1]):0;
+  if(n>=1&&n<=12){ const tn=/(\d+(?:[.,٫]\d+)?)\s*تن(?![ء-ی])/.exec(t); return Object.assign(out,{type:"trip",n,tons:tn?parseFloat(tn[1].replace(/[,٫]/,".")):0}); }
+  if(r.type==="stop"){ const sp=spanMin(t); if(sp&&(out.minutes==null||sp>out.minutes)) out.minutes=sp; return out; }
+  if(role==="کارواش") return set("wash");
+  if(role==="کارگر محوطه"||/نظافت|محوطه|جارو|جمع\s*آوری|جمع‌آوری|تخلیه|جوشکاری|رنگ\s*(?:آمیزی|کاری)/.test(t)) return set("job");
+  return out; }
+function smsRecord(id,ts,phone,body,cGiven){const c=cGiven||contactOf(phone), d=new Date(+ts), r=smsAnalyze(body,c), day=localISO(d);
+  return {id,ts:+ts,date:day,time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"),phone:normPhone(phone||(c&&c.phone)||""),
+    contactId:c?c.id:"",driver:c?c.name:"",machineId:r.type==="batch"?((c&&(S.machines.find(q=>q.id===c.machineId)||{}).type==="بچینگ")?c.machineId:""):smsMachine(body,c),body,type:r.type,cause:r.cause,minutes:r.minutes,
+    fuel:!!r.fuel,liters:r.liters||null,fromT:r.fromT||"",toT:r.toT||"",cost:r.cost||0,station:r.station||"",n:r.n||0,tons:r.tons||0,att:r.att||"",km:r.km||0,sleep:!!r.sleep,
+    rdate:r.rdate&&r.rdate!==day?r.rdate:"",status:"new",ai:false};}
+const smsKind=x=>x.type==="batch"?"batch":x.cause==="سوخت‌گیری"?"fuel":["fault","incident","ready","service","svcdue","att","need","wash","trip","job"].includes(x.type)?x.type:x.type==="stop"?"stopnote":(x.type==="report"&&isBatchSms(x))?"batch":"";
+/* پیام‌های جدید را خودکار به گزارش تبدیل می‌کند؛ هر کدام با «لغو ثبت» برمی‌گردد */
+async function smsAutoRun(ids){ if(!LS.get("smsAuto",true)) return 0; let n=0;
+  const L=S.sms.filter(x=>x.status==="new"&&!x.noAuto&&x.contactId&&(!ids||ids.includes(x.id))).sort((a,b)=>a.ts-b.ts);
+  for(const x of L){ const k=smsKind(x); if(!k) continue; try{ if(await smsConvert(k,x,true)) n++; }catch(e){} }
+  return n; }
+async function smsReanalyze(){ let n=0;
+  for(const x of S.sms.filter(y=>y.status==="new"&&!y.edited)){ const c=S.contacts.find(k=>k.id===x.contactId)||contactOf(x.phone), r=smsRecord(x.id,x.ts,x.phone,x.body,c);
+    const K=q=>JSON.stringify([q.type,q.machineId,q.contactId,q.cause,q.minutes,q.liters,q.cost,q.station,q.fromT,q.toT,q.rdate,q.n,q.km,!!q.sleep]);
+    if(K(r)!==K(x)){ await save("sms",Object.assign({},x,r,{noAuto:false})); n++; } }
+  const a=await smsAutoRun(); return [n,a]; }
+async function smsRevert(x){ for(const [c,id] of [...(x.made||[])].reverse()) if((S[c]||[]).some(r=>r.id===id)) await del(c,id);
+  for(const [c,r] of [...(x.rev||[])].reverse()) await save(c,r);
+  for(const d of x.days||[]){ const p=S.prod.find(q=>q.date===d); if(p&&p.notes==="از ثبت اوپراتورها"&&!S.opprod.some(o=>o.date===d&&+o.volume>0)&&!S.returns.some(o=>o.date===d)) await del("prod",p.id); else await syncProdDay(d); }
+  await save("sms",Object.assign({},S.sms.find(y=>y.id===x.id)||x,{status:"new",made:[],rev:[],days:[],autoNote:"",linked:"",noAuto:true})); }
 async function syncSms(manual,backDays){const P=SMSP();
   if(!P){ if(manual) alert("خواندن پیامک فقط در نسخه نصبی اندروید کار می‌کند."); return; }
   if(!S.contacts.length){ if(manual) alert("ابتدا شماره رانندگان را در پایین همین صفحه ثبت کن."); return; }
@@ -1116,10 +1194,10 @@ async function syncSms(manual,backDays){const P=SMSP();
     const r=await P.readInbox({since}), msgs=(r&&r.messages)||[]; let n=0, maxTs=LS.get("smsSince",0)||0;
     for(const m of msgs){ maxTs=Math.max(maxTs,+m.date); const id="sms"+m.id; if(S.sms.some(x=>x.id===id)) continue; S.sms.push(smsRecord(id,m.date,m.phone||m.address,m.body||"")); n++; }
     LS.set("smsSince",Math.max(maxTs,LS.get("smsSince",0)||0)||Date.now()); LS.set("smsLast",Date.now());
-    if(n){ await persist("sms"); render(); if(LS.get("smsAi",true)) await aiClassify(); } else if(manual) render();
-    if(manual) alert(n?`${fa(n)} پیام جدید وارد شد.`:"پیام جدیدی نیست.");
+    let au=0; if(n){ await persist("sms"); render(); if(LS.get("smsAi",true)) await aiClassify(); au=await smsAutoRun(); } else if(manual) render();
+    if(manual) alert(n?`${fa(n)} پیام جدید وارد شد${au?" و "+fa(au)+" گزارش خودکار ثبت شد":""}.`:"پیام جدیدی نیست.");
   }catch(e){ if(manual) alert("خواندن پیامک ناموفق بود: "+(e.message||e)); } finally{ smsBusy=false; } }
-async function aiClassify(){const cfg=LS.get("cfg",{}); if(!cfg.url||!cfg.token) return; const todo=S.sms.filter(x=>!x.ai&&!x.edited).slice(-40); if(!todo.length) return;
+async function aiClassify(){const cfg=LS.get("cfg",{}); if(!cfg.url||!cfg.token) return; const todo=S.sms.filter(x=>!x.ai&&!x.edited&&x.type==="report"&&x.status==="new").slice(-40); if(!todo.length) return;
   const prompt=`پیامک‌های زیر را رانندگان یک کارخانه بتن برای سرپرست کارگاه فرستاده‌اند. هر پیام را دسته‌بندی کن و فقط یک آرایه JSON برگردان، بدون هیچ متن یا علامت دیگر.
 قالب هر عنصر: {"id": همان شناسه, "type": "fault" یا "stop" یا "incident" یا "report", "minutes": مدت توقف به دقیقه یا null, "cause": یکی از ${JSON.stringify(FSTOP)} یا null, "title": عنوان کوتاه مشکل, "summary": خلاصه یک‌خطی فارسی}
 fault یعنی خرابی دستگاه (حتی اگر مدت توقف هم گفته باشد)، stop یعنی توقف یا معطلی بدون خرابی، incident یعنی تصادف یا مسئله ایمنی، report یعنی بقیه پیام‌ها. مدت را فقط اگر در پیام آمده بنویس.
@@ -1129,42 +1207,64 @@ fault یعنی خرابی دستگاه (حتی اگر مدت توقف هم گف�
       S.sms[i]=Object.assign({},x,{ai:true,type:SMS_T[r.type]?r.type:x.type,minutes:r.minutes!=null&&!isNaN(+r.minutes)?+r.minutes:x.minutes,
         cause:FSTOP.includes(r.cause)?r.cause:(r.type==="fault"?"خرابی":x.cause),title:r.title||x.title||"",summary:r.summary||""}); }
     await persist("sms"); render(); }catch(e){} }
-/* ---------- گزارش پیامکی بچینگ: چند روز در یک پیام، دستگاه، متراژ و تناژ ---------- */
+/* ---------- گزارش پیامکی بچینگ: چند روز در یک پیام، دستگاه، متراژ، تناژ و تعمیرات اوپراتور ---------- */
 const J_MONTHS=[["فروردین"],["اردیبهشت"],["خرداد"],["تیر"],["مرداد","امرداد"],["شهریور"],["مهر"],["آبان","ابان"],["آذر","اذر"],["دی"],["بهمن"],["اسفند"]];
-const PLANT_L={a:"A","آ":"A","ا":"A",b:"B","ب":"B",c:"C","سی":"C","ث":"C"};
-const numFa=v=>parseFloat(String(v).replace(/[,٫\/]/,"."));
+const PLANT_L={a:"A","آ":"A",b:"B","ب":"B",c:"C","سی":"C"};
+const PLANT_RE=/(?:دستگاه(?:\s*بچینگ)?\s*([a-c]|آ|سی|ب(?=\s*(?:$|[.،,\n])))|بچینگ\s*([a-c]|آ|سی))(?![ء-یa-z])/i;
+const BATCH_KW=/بچینگ|بارگیری|متراژ\s*(?:بار|باز|بتن|اصلی)|تناژ\s*(?:بار|باز)|دستگاه\s*(?:[a-c]|آ|سی)(?![ء-یa-z])/i;
+const REPAIR_KW=/تعویض|تعمیر|جوش|نصب|رفع|تنظیم|گریس|روغن\s*کاری/;
+const numFa=v=>parseFloat(String(v).replace(/٬/g,"").replace(/[,٫\/]/,"."));
+const plantLetter=txt=>{const p=PLANT_RE.exec(txt||""); return p?PLANT_L[(p[1]||p[2]).toLowerCase()]:"";};
 function plantByLetter(L){ if(!L) return null; const re=new RegExp("(^|[^a-z])"+L+"([^a-z]|$)","i");
   return S.machines.find(m=>m.type==="بچینگ"&&(re.test(toEn(m.name||""))||String(m.code||"").toUpperCase()===L))||null; }
+/* تاریخ‌های داخل متن: «21 آبان»، «تاریخ 8/19»، «1405.8.21»، «08/22» در ابتدای خط */
+function dateMarks(t,base){ const bj=isoToJ(base), marks=[]; let m;
+  const re=new RegExp("(\\d{1,2})\\s*(?:ام\\s*)?("+J_MONTHS.flat().join("|")+")(?![\\u0621-\\u06CC])","g");
+  while((m=re.exec(t))){ const mo=J_MONTHS.findIndex(a=>a.includes(m[2]))+1; if(+m[1]>=1&&+m[1]<=31) marks.push({i:m.index,end:re.lastIndex,d:+m[1],mo,y:0}); }
+  const re2=/(^|\n)[ \t]*(?:(?:تاریخ|مورخ[هۀ]?)[ \t]*[:：]?[ \t]*)?(?:(1[34]\d{2})[ \t]*[.\/\-][ \t]*)?(\d{1,2})[ \t]*[.\/\-][ \t]*(\d{1,2})(?![\d.\/٫,])(?![ \t]*(?:متر|تن|لیتر|کیلو|m))/g;
+  while((m=re2.exec(t))){ const mo=+m[3], d=+m[4]; if(mo>=1&&mo<=12&&d>=1&&d<=31) marks.push({i:m.index+m[1].length,end:re2.lastIndex,d,mo,y:m[2]?+m[2]:0}); }
+  marks.sort((a,b)=>a.i-b.i);
+  for(const k of marks){ const jy=k.y||(k.mo>bj.jm+1?bj.jy-1:bj.jy); try{ k.date=jToIso(jy,k.mo,k.d); }catch(e){ k.date=base; } }
+  return marks; }
 function batchSmsParse(body,baseIso){
-  const base=baseIso||todayISO(), t=toEn(String(body||"")).replace(/ي/g,"ی").replace(/ك/g,"ک"), bj=isoToJ(base);
-  const re=new RegExp("(\\d{1,2})\\s*(?:ام\\s*)?("+J_MONTHS.flat().join("|")+")(?![\\u0621-\\u06CC])","g"), marks=[]; let m;
-  while((m=re.exec(t))){ const mo=J_MONTHS.findIndex(a=>a.includes(m[2]))+1; if(+m[1]>=1&&+m[1]<=31) marks.push({i:m.index,end:re.lastIndex,d:+m[1],mo}); }
+  const base=baseIso||todayISO(), t=toEn(String(body||"")).replace(/ي/g,"ی").replace(/ك/g,"ک"), marks=dateMarks(t,base);
   const cut=marks.length?marks.map((k,n)=>({k,txt:t.slice(k.end,n+1<marks.length?marks[n+1].i:t.length)})):[{k:null,txt:t}];
-  return cut.map(({k,txt})=>{ let date=base;
-    if(k){ const jy=k.mo>bj.jm+1?bj.jy-1:bj.jy; try{ date=jToIso(jy,k.mo,k.d); }catch(e){} }
-    const pl=/دستگاه(?:\s*بچینگ)?\s*([a-c]|آ|ا|ب|سی|ث)(?![\u0621-\u06CCa-z])/i.exec(txt), L=pl?PLANT_L[pl[1].toLowerCase()]:"", mc=plantByLetter(L);
-    const v=/(\d+(?:[.,٫\/]\d+)?)\s*(?:متر\s*مکعب|مترمکعب|متر|m3)/i.exec(txt), volume=v?numFa(v[1]):0;
-    let tons=0; const tk=/تناژ\s*(?:کل\s*)?(?:حدود\s*)?(\d[\d,٬]*(?:[.٫]\d+)?)/.exec(txt), tt=/(\d+(?:[.,٫]\d+)?)\s*تن(?![\u0621-\u06CC])/.exec(txt);
-    if(tk){ tons=parseFloat(tk[1].replace(/[,٬]/g,"").replace("٫",".")); if(tons>500) tons=tons/1000; } else if(tt) tons=numFa(tt[1]);
+  return cut.map(({k,txt})=>{
+    const sent=txt.split(/\.(?!\d)|\n|؛/).map(x=>x.trim()).filter(Boolean);
+    const reps=sent.filter(x=>REPAIR_KW.test(x)&&!/\d\s*متر|متراژ|تناژ/.test(x)).map(x=>({text:x.replace(/^[\s:،\-–]+/,""),letter:plantLetter(x)}));
+    const rest=sent.filter(x=>!reps.some(r=>x.includes(r.text))).join(" . ");
+    const L=plantLetter(rest), mc=plantByLetter(L);
+    const lab=[...rest.matchAll(/متراژ[^\d\n]{0,18}(\d+(?:[.,٫\/]\d+)?)/g)].map(q=>numFa(q[1]));
+    const nf=/(\d+(?:[.,٫\/]\d+)?)\s*(?:متر\s*مکعب|مترمکعب|متر|m3)/i.exec(rest);
+    let volume=lab.length?lab[0]:nf?numFa(nf[1]):0, tons=0;
+    const tk=/تناژ[^\d\n]{0,18}(\d[\d٬]*(?:[.,٫\/]\d+)?)/.exec(rest), tt=/(\d+(?:[.,٫]\d+)?)\s*تن(?![ء-ی])/.exec(rest);
+    if(tk) tons=numFa(tk[1]); else if(tt) tons=numFa(tt[1]);
+    else if(lab.length>=2){ const a=Math.min(lab[0],lab[1]), b=Math.max(lab[0],lab[1]); if(a>0&&b/a>=2&&b/a<=2.9){ volume=a; tons=b; } }
+    if(tons>0){ if(volume>0){ const ok=v=>v*1000/volume>=1800&&v*1000/volume<=3000; if(!ok(tons)&&ok(tons/1000)) tons/=1000; } else if(tons>500) tons/=1000; }
     const dens=volume>0&&tons>0?tons*1000/volume:null;
-    return {date,letter:L,machineId:mc?mc.id:"",volume,tons,dens,odd:dens!=null&&(dens<2200||dens>2600),text:txt.replace(/^[\s:،\-–.]+/,"").replace(/\s+/g," ").trim()}; }).filter(x=>x.text||x.volume); }
+    return {date:k?k.date:base,letter:L,machineId:mc?mc.id:"",volume,tons:+tons.toFixed(3),dens,odd:dens!=null&&(dens<2200||dens>2600),shift:/شب\s*کار|شبکار|شیفت\s*شب/.test(txt)?"شب":"روز",reps,
+      text:txt.replace(/^[\s:،\-–.]+/,"").replace(/\s+/g," ").trim()}; }).filter(x=>x.text||x.volume); }
 function isBatchSms(x){ const c=S.contacts.find(k=>k.id===x.contactId), sg=batchSmsParse(x.body,x.date);
-  return sg.some(g=>g.letter||g.volume>0)&&((c&&roleOf(c)==="اپراتور بچینگ")||/بچینگ|بارگیری|دستگاه\s*(?:[a-c]|آ|ب|سی)(?![\u0621-\u06CCa-z])/i.test(toEn(x.body||""))); }
-function batchSmsPreview(x){ return batchSmsParse(x.body,x.date).map(g=>`<div class="m">• ${jal(g.date)} — ${g.letter?"دستگاه "+g.letter+(g.machineId?"":" (در ماشین‌آلات پیدا نشد)"):"دستگاه نامشخص"}${g.volume?` • ${f1(g.volume)} م³`:" • بدون متراژ (فقط فعالیت)"}${g.tons?` • ${f1(g.tons)} تن`:""}${g.dens?` • ${fa(Math.round(g.dens))} kg/m³${g.odd?' <span class="tag due">چگالی غیرعادی</span>':""}`:""}</div>`).join(""); }
-function smsItem(x){const st_=x.status==="new"?'<span class="tag soon">جدید</span>':x.status==="done"?'<span class="tag ok">ثبت شد</span>':'<span class="tag">بایگانی</span>';
-  return `<div class="item"><div class="t">${esc(x.driver||x.phone)}<span class="tag ${SMS_C[x.type]}">${SMS_T[x.type]}</span>${st_}</div>
-   <div class="m">${jal(x.date)} • ${faNum(x.time||"")}${x.machineId?" • "+esc(mName(x.machineId)):""}${x.minutes?` • ${fa(x.minutes)} دقیقه`:""}${x.fromT?` • ${faNum(x.fromT)} تا ${faNum(x.toT)}`:""}${x.liters?` • ${fa(x.liters)} لیتر`:""}${x.cause?" • "+esc(x.cause):""}${x.ai?" • تحلیل Claude":""}</div>
+  return sg.some(g=>g.letter||g.volume>0||g.reps.length)&&((c&&roleOf(c)==="اپراتور بچینگ")||BATCH_KW.test(toEn(x.body||""))); }
+function batchSmsPreview(x){ return batchSmsParse(x.body,x.date).map(g=>`<div class="m">• ${jal(g.date)}${g.shift==="شب"?" (شب)":""} — ${g.letter?"دستگاه "+g.letter+(g.machineId?"":" (در ماشین‌آلات پیدا نشد)"):"دستگاه نامشخص"}${g.volume?` • ${f1(g.volume)} م³`:" • بدون متراژ"}${g.tons?` • ${f1(g.tons)} تن`:""}${g.dens?` • ${fa(Math.round(g.dens))} kg/m³${g.odd?' <span class="tag due">چگالی غیرعادی</span>':""}`:""}${g.reps.length?` • ${fa(g.reps.length)} تعمیر`:""}</div>`).join(""); }
+function smsItem(x){const st_=x.status==="new"?'<span class="tag soon">جدید</span>':x.status==="done"?`<span class="tag ok">${x.auto?"ثبت خودکار":"ثبت شد"}</span>`:'<span class="tag">بایگانی</span>';
+  const k=smsKind(x), canRev=x.status==="done";
+  return `<div class="item"><div class="t"><input type="checkbox" data-smssel="${x.id}" style="width:auto;margin-inline-end:6px" aria-label="انتخاب برای ادغام">${esc(x.driver||x.phone||"ناشناس")}<span class="tag ${SMS_C[x.type]||""}">${SMS_T[x.type]||x.type}</span>${st_}${x.merged?`<span class="tag">ادغام ${fa(x.merged)} پیام</span>`:""}</div>
+   <div class="m">${jal(x.date)} • ${faNum(x.time||"")}${x.machineId?" • "+esc(mName(x.machineId)):""}${x.minutes?` • ${fa(x.minutes)} دقیقه`:""}${x.fromT?` • ${faNum(x.fromT)} تا ${faNum(x.toT)}`:""}${x.liters?` • ${fa(x.liters)} لیتر`:""}${x.cost?` • ${fa(x.cost)} تومان`:""}${x.station?" • جایگاه "+esc(x.station):""}${x.rdate?" • مربوط به "+jal(x.rdate):""}${x.sleep?" • اعلام خواب":""}${x.type==="trip"&&x.n?` • ${fa(x.n)} سرویس`:""}${x.att?" • "+esc(x.att):""}${x.cause?" • "+esc(x.cause):""}${x.ai?" • تحلیل دستیار":""}</div>
    <div style="white-space:pre-wrap;margin:4px 0;font-size:14px">${esc(x.body)}</div>${x.summary?`<div class="m">خلاصه: ${esc(x.summary)}</div>`:""}
-   ${isBatchSms(x)?`<div class="note" style="margin:4px 0">گزارش بچینگ تشخیص داده شد:</div>${batchSmsPreview(x)}`:""}
-   <details><summary style="font-size:13px">اصلاح دسته‌بندی</summary><div class="grid2" style="margin-top:6px">
-    <select data-smst="${x.id}">${Object.entries(SMS_T).map(([k,v])=>`<option value="${k}" ${x.type===k?"selected":""}>${v}</option>`).join("")}</select>
+   ${x.autoNote?`<div class="note" style="margin:4px 0">${esc(x.autoNote)}</div>`:""}
+   ${x.status==="new"&&k==="batch"?`<div class="note" style="margin:4px 0">گزارش بچینگ:</div>${batchSmsPreview(x)}`:""}
+   ${x.status==="new"&&!x.contactId?'<div class="note" style="margin:4px 0;color:var(--bad)">فرستنده در فهرست پرسنل نیست؛ برای ثبت خودکار، شماره‌اش را به یکی از پرسنل بده.</div>':""}
+   ${x.status==="new"?`<details><summary style="font-size:13px">اصلاح دسته‌بندی</summary><div class="grid2" style="margin-top:6px">
+    <select data-smst="${x.id}">${Object.entries(SMS_T).map(([kk,v])=>`<option value="${kk}" ${x.type===kk?"selected":""}>${v}</option>`).join("")}</select>
     <select data-smsc="${x.id}"><option value="">علت —</option>${FSTOP.map(c=>`<option ${x.cause===c?"selected":""}>${c}</option>`).join("")}</select>
     <input data-smsm="${x.id}" type="number" inputmode="numeric" placeholder="مدت (دقیقه)" value="${x.minutes||""}">
-    <select data-smsmc="${x.id}"><option value="">دستگاه —</option>${S.machines.map(m=>`<option value="${m.id}" ${x.machineId===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select></div></details>
-   ${x.status==="new"?`<div class="row" style="margin-top:7px">${isBatchSms(x)?`<button class="primary" data-sms2="batch" data-sid="${x.id}">ثبت در تولید بچینگ</button>`:""}${x.cause==="سوخت‌گیری"?`<button class="primary" data-sms2="fuel" data-sid="${x.id}">ثبت سوخت‌گیری</button>`:""}${x.type==="fault"?`<button class="primary" data-sms2="fault" data-sid="${x.id}">ثبت در خرابی‌ها</button>`:""}
-    ${x.type==="incident"?`<button class="primary" data-sms2="incident" data-sid="${x.id}">ثبت در ایمنی</button>`:""}
-    ${x.type==="stop"||x.type==="fault"?`<button class="ghost" data-sms2="stop" data-sid="${x.id}">ثبت توقف تولید</button>`:""}
-    <button class="ghost" data-sms2="ok" data-sid="${x.id}">تأیید و بایگانی</button></div>`:""}</div>`;}
+    <select data-smsmc="${x.id}"><option value="">دستگاه —</option>${S.machines.map(m=>`<option value="${m.id}" ${x.machineId===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select></div></details>`:""}
+   <div class="row" style="margin-top:7px">${x.status==="new"&&k?`<button class="primary" data-sms2="${k}" data-sid="${x.id}">${SMS_BTN[k]}</button>`:""}
+    ${x.status==="new"&&(x.type==="stop"||x.type==="fault")?`<button class="ghost" data-sms2="stop" data-sid="${x.id}">ثبت توقف تولید</button>`:""}
+    ${x.status==="new"?`<button class="ghost" data-sms2="ok" data-sid="${x.id}">بایگانی</button>`:""}
+    ${canRev?`<button class="ghost" data-smsrev="${x.id}">لغو ثبت</button>`:""}${x.status==="archived"?`<button class="ghost" data-smsrev="${x.id}">برگرداندن به جدید</button>`:""}
+    <button class="danger" data-smsdel="${x.id}">حذف پیام</button></div></div>`;}
 function smsAgg(f,t){const R_=S.sms.filter(x=>inR(x.date,f,t)), by={}, cause={};
   R_.forEach(x=>{const k=x.driver||x.phone, o=by[k]||(by[k]={d:k,n:0,f:0,st:0,inc:0}); o.n++; if(x.type==="fault")o.f++; if(x.type==="incident")o.inc++; o.st+=smsMin(x);
     if(smsMin(x)) cause[x.cause||"سایر"]=(cause[x.cause||"سایر"]||0)+smsMin(x);});
@@ -1180,66 +1280,112 @@ function vSms(){const P=SMSP(), t=todayISO(), a=smsAgg(addDays(t,-29),t), tot=su
   <div class="card"><h3>دریافت پیامک‌ها</h3>
    <div class="m">آخرین بررسی: ${last?jal(localISO(new Date(last)))+" ساعت "+faNum(new Date(last).toTimeString().slice(0,5)):"هنوز انجام نشده"}</div>
    <div class="row" style="margin-top:8px"><button class="primary" id="smsSync">خواندن پیام‌های جدید</button><button class="ghost" id="smsSync30">خواندن ۳۰ روز گذشته</button></div>
-   <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="smsAi" type="checkbox" style="width:auto" ${LS.get("smsAi",true)?"checked":""}> دسته‌بندی دقیق با Claude</label>
-   <label style="display:flex;gap:8px;align-items:center"><input id="smsNotify" type="checkbox" style="width:auto" ${LS.get("smsNotify",true)?"checked":""}> اعلان پیام رانندگان وقتی اپ بسته است</label>
+   <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="smsAuto" type="checkbox" style="width:auto" ${LS.get("smsAuto",true)?"checked":""}> ثبت خودکار گزارش از روی پیامک</label>
+   <label style="display:flex;gap:8px;align-items:center"><input id="smsAi" type="checkbox" style="width:auto" ${LS.get("smsAi",true)?"checked":""}> کمک گرفتن از دستیار برای پیام‌های نامشخص</label>
+   <label style="display:flex;gap:8px;align-items:center"><input id="smsNotify" type="checkbox" style="width:auto" ${LS.get("smsNotify",true)?"checked":""}> اعلان پیام پرسنل وقتی اپ بسته است</label>
    <div class="note" style="margin-top:6px">فقط پیامک شماره‌هایی که پایین ثبت کرده‌ای خوانده می‌شود و بقیه پیامک‌هایت وارد اپ نمی‌شوند. وقتی اپ باز است پیام‌ها خودکار وارد می‌شوند و وقتی بسته است، با باز کردن اپ.</div></div>
   <div class="card"><h3>پیام‌ها</h3>
-   <div class="chips">${[["new",`جدید ${fa(nNew)}`],["all","همه"],["fault","خرابی"],["stop","توقف"],["incident","حادثه"],["report","عمومی"]].map(([k,n])=>`<button class="chip ${smsF===k?"on":""}" data-smsf="${k}">${n}</button>`).join("")}</div>
+   <div class="chips">${[["new",`جدید ${fa(nNew)}`],["all","همه"],...Object.keys(SMS_T).filter(k=>k==="report"||S.sms.some(x=>x.type===k)).map(k=>[k,SMS_T[k]])].map(([k,n])=>`<button class="chip ${smsF===k?"on":""}" data-smsf="${k}">${n}</button>`).join("")}</div>
+   <div class="row" style="margin:6px 0"><button class="ghost" id="smsRe">تحلیل دوباره‌ی پیام‌های جدید</button><button class="ghost" id="smsMerge">ادغام پیام‌های تیک‌خورده</button></div>
    ${list.length?list.map(smsItem).join(""):'<div class="empty">پیامی در این دسته نیست.</div>'}</div>
-  ${a.drivers.length?`<div class="card"><h3>گزارش ۳۰ روز به تفکیک راننده</h3><div class="scrollx"><table><tr><th>راننده</th><th>پیام</th><th>خرابی</th><th>توقف (دقیقه)</th><th>حادثه</th></tr>
+  ${a.drivers.length?`<div class="card"><h3>گزارش ۳۰ روز به تفکیک فرستنده</h3><div class="scrollx"><table><tr><th>فرستنده</th><th>پیام</th><th>خرابی</th><th>توقف (دقیقه)</th><th>حادثه</th></tr>
    ${a.drivers.map(o=>`<tr><td>${esc(o.d)}</td><td>${fa(o.n)}</td><td>${fa(o.f)}</td><td>${fa(o.st)}</td><td>${fa(o.inc)}</td></tr>`).join("")}</table></div></div>`:""}
   ${a.cause.length?`<div class="card"><h3>علت توقف‌های گزارش‌شده (۳۰ روز)</h3>${a.cause.map(([k,v])=>`<div class="par"><div class="pl">${esc(k)}</div><div class="bar"><i style="width:${Math.round(v/mx*100)}%"></i></div>
    <div class="pv">${fa(v)} دقیقه • ${fa(Math.round(v/tot*100))}٪</div></div>`).join("")}</div>`:""}
-  <div class="card"><h3>رانندگان و شماره‌ها (${fa(S.contacts.length)})${S.contacts.some(c=>!normPhone(c.phone))?`<span class="tag due">${fa(S.contacts.filter(c=>!normPhone(c.phone)).length)} بدون شماره</span>`:""}</h3>
-   ${S.contacts.some(c=>!normPhone(c.phone))?'<div class="note" style="margin-bottom:6px">پیامک فقط از شماره‌هایی خوانده می‌شود که اینجا ثبت شده باشند. برای هر نفر «ویرایش» را بزن و شماره را وارد کن.</div>':""}
-   ${[...S.contacts].sort((a,b)=>(!!normPhone(a.phone))-(!!normPhone(b.phone))).map(c=>`<div class="item"><div class="t">${esc(c.name)}${normPhone(c.phone)?"":'<span class="tag due">بدون شماره</span>'}${c.active===false?'<span class="tag">غیرفعال</span>':""}</div>${normPhone(c.phone)?`<div class="m" dir="ltr" style="text-align:right">${esc(c.phone)}</div>`:""}
-    <div class="m">${esc(roleOf(c))} • ${c.machineId?esc(mName(c.machineId)):"بدون دستگاه"}</div><div class="row" style="margin-top:6px"><button class="primary" data-conedit="${c.id}">ویرایش</button><button class="danger" data-condel="${c.id}">حذف</button></div></div>`).join("")}
+  <div class="card"><h3>پرسنل و شماره‌ها (${fa(S.contacts.length)})${S.contacts.some(c=>!hasPhone(c))?`<span class="tag due">${fa(S.contacts.filter(c=>!hasPhone(c)).length)} بدون شماره</span>`:""}</h3>
+   ${S.contacts.some(c=>!hasPhone(c))?'<div class="note" style="margin-bottom:6px">پیامک فقط از شماره‌هایی خوانده می‌شود که اینجا ثبت شده باشند. برای هر نفر «ویرایش» را بزن و شماره را وارد کن.</div>':""}
+   ${ROLES.filter(r=>S.contacts.some(c=>roleOf(c)===r)).map(r=>{const G=S.contacts.filter(c=>roleOf(c)===r).sort((a,b)=>hasPhone(a)-hasPhone(b));
+     return `<details ${G.length<=12?"open":""} style="margin-top:8px"><summary><b>${r}</b> (${fa(G.length)})</summary>${G.map(c=>`<div class="item"><div class="t">${esc(c.name)}${hasPhone(c)?"":'<span class="tag due">بدون شماره</span>'}${c.active===false?'<span class="tag">غیرفعال</span>':""}</div>${hasPhone(c)?`<div class="m" dir="ltr" style="text-align:right">${esc([c.phone,c.phone2].filter(p=>normPhone(p)).join("  |  "))}</div>`:""}
+      <div class="m">${c.machineId?esc(mName(c.machineId)):"بدون دستگاه"}</div><div class="row" style="margin-top:6px"><button class="primary" data-conedit="${c.id}">ویرایش</button><button class="danger" data-condel="${c.id}">حذف</button></div></div>`).join("")}</details>`;}).join("")}
    <details><summary>ورود گروهی شماره‌ها</summary>
     <label>هر خط: نام یا کد ماشین، و شماره‌ی موبایل</label><textarea id="bph" rows="6" dir="auto" placeholder="پیمان اعتصامی 09121234567&#10;74613 09121234567"></textarea>
     <div class="row" style="margin-top:8px"><button class="primary" id="bulkPh">ثبت شماره‌ها</button></div>
     <div class="note">نام باید با نام ثبت‌شده در فهرست بخواند؛ اگر کد پنج‌رقمی ماشین را بنویسی، شماره برای راننده‌ی همان ماشین ثبت می‌شود.</div></details>
-   <details ${S.contacts.length?"":"open"}><summary>افزودن راننده</summary>
-    <div class="grid2"><div><label>نام راننده</label><input id="cnm"></div><div><label>شماره موبایل</label><input id="cph" type="tel" dir="ltr" placeholder="0912..."></div></div>
+   <details ${S.contacts.length?"":"open"}><summary>افزودن پرسنل</summary>
+    <div class="grid2"><div><label>نام</label><input id="cnm"></div><div><label>نقش</label><select id="crl">${ROLES.map(r=>`<option>${r}</option>`).join("")}</select></div>
+     <div><label>شماره موبایل</label><input id="cph" type="tel" dir="ltr" placeholder="0912..."></div><div><label>شماره‌ی دوم (اختیاری)</label><input id="cph2" type="tel" dir="ltr"></div></div>
     <label>دستگاه</label><select id="cmc"><option value="">—</option>${S.machines.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select>
-    <div class="row" style="margin-top:9px"><button class="primary" id="addCon">ثبت راننده</button></div></details></div>
+    <div class="row" style="margin-top:9px"><button class="primary" id="addCon">ثبت</button></div></details></div>
   <div class="card"><details><summary>ورود دستی پیامک</summary>
-   <label>راننده</label><select id="msd">${S.contacts.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
+   <label>فرستنده</label><select id="msd">${ROLES.filter(r=>S.contacts.some(c=>roleOf(c)===r)).map(r=>`<optgroup label="${r}">${S.contacts.filter(c=>roleOf(c)===r).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</optgroup>`).join("")}</select>
    <label>متن پیامک</label><textarea id="msb"></textarea>
    <div class="row" style="margin-top:9px"><button class="primary" id="addSmsM">افزودن</button></div></details></div>`;}
-async function smsConvert(kind,x){
-  if(kind==="ok"){ await save("sms",Object.assign({},x,{status:"archived"})); return; }
-  if(kind==="batch"){ const segs=batchSmsParse(x.body,x.date), ds=new Set(); let nv=0, na=0;
-    if(!x.contactId) return alert("فرستنده در فهرست پرسنل نیست؛ اول او را با نقش «اپراتور بچینگ» ثبت کن.");
-    for(let i=0;i<segs.length;i++){ const g=segs[i]; ds.add(g.date); if(g.volume>0) nv++; else na++;
-      await save("opprod",{id:"s_"+x.id+"_"+i,date:g.date,shift:"روز",machineId:g.machineId,contactId:x.contactId,volume:g.volume||0,tons:g.tons||0,grade:"",note:g.text,src:"sms"}); }
-    for(const d of ds) await syncProdDay(d);
-    await save("sms",Object.assign({},x,{status:"done",linked:"opprod"}));
-    alert(`${fa(nv)} ثبت تولید و ${fa(na)} فعالیت بدون متراژ برای ${x.driver||"اوپراتور"} ثبت شد.`); return; }
-  const title=x.title||x.summary||x.body.split("\n")[0].slice(0,70), note=`گزارش پیامکی ${x.driver||x.phone} (${jal(x.date)} ${faNum(x.time||"")}): ${x.body}`;
-  if(kind==="fault"){ if(!x.machineId) return alert("ابتدا در «اصلاح دسته‌بندی» دستگاه را انتخاب کن.");
-    const fid=uid(); await save("faults",{id:fid,machineId:x.machineId,title,date:x.date,cause:"سایر",stopped:!!x.minutes,downH:x.minutes?+(x.minutes/60).toFixed(1):0,cost:0,notes:note,photos:[],status:"open"});
-    await save("sms",Object.assign({},x,{status:"done",linked:"faults:"+fid})); alert("در خرابی‌ها ثبت شد."); return; }
-  if(kind==="incident"){ const iid=uid(); await save("incidents",{id:iid,type:/تصادف|مصدوم|زخمی|آسیب|واژگون/.test(x.body)?"حادثه":"شبه‌حادثه",sev:"متوسط",date:x.date,time:x.time,title,
-      loc:"",people:"راننده "+(x.driver||""),desc:note,cause:"",action:"",resp:"",photos:[],status:"open"});
-    await save("sms",Object.assign({},x,{status:"done",linked:"incidents:"+iid})); alert("در ایمنی و حوادث ثبت شد."); return; }
-  if(kind==="fuel"){ if(!x.machineId) return alert("ابتدا در «اصلاح دسته‌بندی» دستگاه را انتخاب کن.");
-    let mn=+x.minutes||0; if(!mn){ const r=prompt("مدت سوخت‌گیری به دقیقه:",""); if(r===null) return; mn=+toEn(r)||0; }
-    let lt=+x.liters||0; if(!lt){ const r=prompt("مقدار سوخت به لیتر (اگر نمی‌دانی خالی بگذار):",""); if(r===null) return; lt=+toEn(r)||0; }
-    const mm=S.machines.find(y=>y.id===x.machineId); let us=0;
-    const r2=prompt("کارکرد دستگاه هنگام سوخت‌گیری ("+unitName(mm)+") — اختیاری:",""); if(r2!==null) us=+toEn(r2)||0;
-    const fid=uid(); await save("fuel",{id:fid,machineId:x.machineId,date:x.date,liters:lt,usage:us,cost:0,min:mn,fromT:x.fromT||"",toT:x.toT||"",src:"sms",driver:x.driver||"",notes:note});
-    if(mm&&us>mUsage(mm)) await save("machines",Object.assign({},mm,{usage:us,usageAt:todayISO()}));
-    await save("sms",Object.assign({},x,{status:"done",linked:"fuel:"+fid})); alert("سوخت‌گیری ثبت شد و "+fa(mn)+" دقیقه روی توقف همین دستگاه حساب شد."); return; }
-  if(kind==="stop"){ let mn=+x.minutes||0; if(!mn){ const r=prompt("مدت توقف تولید به دقیقه:",""); if(r===null) return; mn=+toEn(r)||0; } if(!mn) return;
-    const sid=uid(); await save("stops",{id:sid,date:x.date,min:mn,cat:x.type==="fault"?"خرابی ناوگان":"سایر",machineId:x.machineId||"",notes:(x.cause?x.cause+" — ":"")+note});
-    await syncDown(x.date); await save("sms",Object.assign({},x,{status:"done",linked:"stops:"+sid})); alert("در توقف‌های تولید ثبت شد."); return; }}
+async function smsConvert(kind,x,quiet){
+  x=Object.assign({},x,{date:x.rdate||x.date});       // گزارش به روزی ثبت می‌شود که در متن آمده
+  const say=m=>{ if(!quiet) alert(m); }, made=[], rev=[], days_=[];
+  const mk=async(col,o)=>{ await save(col,o); made.push([col,o.id]); };
+  const ch=async(col,old,nw)=>{ rev.push([col,JSON.parse(JSON.stringify(old))]); await save(col,nw); };
+  const done=async(note,linked)=>{ await save("sms",Object.assign({},S.sms.find(y=>y.id===x.id)||x,{status:"done",made,rev,days:days_,autoNote:note,auto:!!quiet,linked:linked||""})); say(note); return true; };
+  const needM=()=>{ if(x.machineId) return true; say("ابتدا در «اصلاح دسته‌بندی» دستگاه را انتخاب کن."); return false; };
+  const needC=()=>{ if(x.contactId) return true; say("فرستنده در فهرست پرسنل نیست؛ اول شماره‌اش را برای یکی از پرسنل ثبت کن."); return false; };
+  const mm=S.machines.find(y=>y.id===x.machineId), who=x.driver||x.phone||"";
+  const title=x.title||x.summary||smsTitle(x.body), note=`گزارش پیامکی ${who} (${jal(x.date)} ${faNum(x.time||"")}): ${x.body}`;
+  if(kind==="ok"){ await save("sms",Object.assign({},x,{status:"archived"})); return true; }
+  if(kind==="stopnote"){ if(!(+x.minutes>0)){ say("مدت توقف را در «اصلاح دسته‌بندی» وارد کن."); return false; } return done(`${fa(x.minutes)} دقیقه توقف (${x.cause||"سایر"}) در گزارش توقف‌های ${who} حساب شد.`); }
+  if(kind==="batch"){ if(!needC()) return false; const segs=batchSmsParse(x.body,x.date); let nv=0, na=0, nr=0; if(!segs.length) return false;
+    const own=S.contacts.find(k=>k.id===x.contactId), ownM=own&&(S.machines.find(q=>q.id===own.machineId)||{}).type==="بچینگ"?own.machineId:"";
+    for(let i=0;i<segs.length;i++){ const g=segs[i], mid=g.machineId||ownM;
+      if(g.volume>0||!g.reps.length){ if(!days_.includes(g.date)) days_.push(g.date); if(g.volume>0) nv++; else na++;
+        await mk("opprod",{id:"s_"+x.id+"_"+i,date:g.date,shift:g.shift,machineId:mid,contactId:x.contactId,volume:g.volume||0,tons:g.tons||0,grade:"",note:g.text,src:"sms"}); }
+      for(const r of g.reps){ const pm=plantByLetter(r.letter); nr++;
+        await mk("log",{id:uid(),machineId:pm?pm.id:mid,date:g.date,title:r.text,kind:"oprepair",by:x.contactId,cost:0,src:"sms"}); } }
+    for(const d of days_) await syncProdDay(d);
+    return done(`${fa(nv)} ثبت تولید${na?"، "+fa(na)+" فعالیت بدون متراژ":""}${nr?" و "+fa(nr)+" تعمیر":""} برای ${who||"اوپراتور"} در بچینگ ثبت شد.`,"opprod"); }
+  if(kind==="fault"){ if(!needM()) return false; const fid=uid(), dupF=S.faults.find(f=>f.machineId===x.machineId&&f.date===x.date&&f.status!=="fixed"&&/گزارش پیامکی/.test(f.notes||""));
+    if(dupF){ await ch("faults",dupF,Object.assign({},dupF,{notes:dupF.notes+"\n"+note,stopped:dupF.stopped||!!x.minutes||!!x.sleep,sleep:dupF.sleep||!!x.sleep,downH:Math.max(+dupF.downH||0,x.minutes?+(x.minutes/60).toFixed(1):0)}));
+      if(x.sleep&&mm&&mm.status==="فعال") await ch("machines",mm,Object.assign({},mm,{status:"در تعمیر"}));
+      return done(`به خرابیِ بازِ امروزِ ${mName(x.machineId)} اضافه شد (خرابی تازه ساخته نشد).`,"faults:"+dupF.id); }
+    await mk("faults",{id:fid,machineId:x.machineId,title,date:x.date,cause:"سایر",stopped:!!x.minutes||!!x.sleep,downH:x.minutes?+(x.minutes/60).toFixed(1):0,cost:0,notes:note,photos:[],status:"open",sleep:!!x.sleep});
+    if(x.sleep&&mm&&mm.status==="فعال") await ch("machines",mm,Object.assign({},mm,{status:"در تعمیر"}));
+    return done(`خرابی برای ${mName(x.machineId)} ثبت شد${x.sleep?" و دستگاه «در تعمیر» شد":""}${x.minutes?" ("+f1(x.minutes/60)+" ساعت توقف)":""}.`,"faults:"+fid); }
+  if(kind==="incident"){ const iid=uid(); await mk("incidents",{id:iid,type:/تصادف|مصدوم|زخمی|آسیب|واژگون/.test(x.body)?"حادثه":"شبه‌حادثه",sev:"متوسط",date:x.date,time:x.time,title,
+      loc:"",people:who,desc:note,cause:"",action:"",resp:"",photos:[],status:"open"});
+    return done("در ایمنی و حوادث ثبت شد.","incidents:"+iid); }
+  if(kind==="fuel"){ if(!needM()) return false; let mn=+x.minutes||0, lt=+x.liters||0, us=0;
+    if(quiet){ if(!mn&&!lt&&!x.station&&!x.fromT) return false; }
+    else { if(!mn){ const r=prompt("مدت سوخت‌گیری به دقیقه:",""); if(r===null) return false; mn=+toEn(r)||0; }
+      if(!lt){ const r=prompt("مقدار سوخت به لیتر (اگر نمی‌دانی خالی بگذار):",""); if(r===null) return false; lt=+toEn(r)||0; }
+      const r2=prompt("کارکرد دستگاه هنگام سوخت‌گیری ("+unitName(mm)+") — اختیاری:",""); if(r2!==null) us=+toEn(r2)||0; }
+    const fid=uid(); await mk("fuel",{id:fid,machineId:x.machineId,date:x.date,liters:lt,usage:us,cost:+x.cost||0,station:x.station||"",min:mn,fromT:x.fromT||"",toT:x.toT||"",src:"sms",driver:x.driver||"",notes:note});
+    if(mm&&us>mUsage(mm)) await ch("machines",mm,Object.assign({},mm,{usage:us,usageAt:todayISO()}));
+    return done(`سوخت‌گیری ${mName(x.machineId)}${x.station?" در جایگاه "+x.station:""} برای ${jal(x.date)} ثبت شد${lt?" ("+fa(lt)+" لیتر"+(x.cost?"، "+fa(x.cost)+" تومان":"")+")":""}${mn?" و "+fa(mn)+" دقیقه معطلی حساب شد":""}.`,"fuel:"+fid); }
+  if(kind==="stop"){ let mn=+x.minutes||0; if(!mn){ if(quiet) return false; const r=prompt("مدت توقف تولید به دقیقه:",""); if(r===null) return false; mn=+toEn(r)||0; } if(!mn) return false;
+    const sid=uid(); await mk("stops",{id:sid,date:x.date,min:mn,cat:x.type==="fault"?"خرابی ناوگان":"سایر",machineId:x.machineId||"",notes:(x.cause?x.cause+" — ":"")+note});
+    await syncDown(x.date); return done("در توقف‌های تولید ثبت شد.","stops:"+sid); }
+  if(kind==="ready"){ if(!needM()) return false; const open=S.faults.filter(f=>f.machineId===x.machineId&&f.status!=="fixed");
+    for(const f of open) await ch("faults",f,Object.assign({},f,{status:"fixed",fixedDate:x.date}));
+    const m2=S.machines.find(y=>y.id===x.machineId); if(m2&&m2.status==="در تعمیر") await ch("machines",m2,Object.assign({},m2,{status:"فعال"}));
+    await mk("log",{id:uid(),machineId:x.machineId,date:x.date,title:"اعلام آماده‌به‌کار (پیامک "+who+")",kind:"ready",usage:mm?mUsage(mm):0,cost:0});
+    return done(`${mName(x.machineId)} آماده‌به‌کار شد${open.length?" و "+fa(open.length)+" خرابی باز بسته شد":""}.`); }
+  if(kind==="svcdue"){ if(!needM()) return false;
+    await mk("tasks",{id:uid(),kind:"pm",title:"تعویض روغن — اعلام راننده"+(x.km?": "+fa(x.km)+" کیلومتر کارکرد":""),machineId:x.machineId,notes:note,due:x.date,interval:0,usageInterval:0,priority:"عادی",status:"open",created:todayISO(),src:"sms"});
+    return done(`یک کار نگهداری برای ${mName(x.machineId)} در «تعمیر و نگهداری» باز شد.`); }
+  if(kind==="service"){ if(!needM()) return false; await mk("log",{id:uid(),machineId:x.machineId,date:x.date,title,kind:"service",usage:mm?mUsage(mm):0,cost:0,notes:note});
+    return done(`سرویس «${title}» در سابقه‌ی ${mName(x.machineId)} ثبت شد.`); }
+  if(kind==="att"){ if(!needC()) return false; const ad=addDays(x.date,/پس\s*فردا|پس‌فردا/.test(x.body)?2:/فردا/.test(x.body)?1:0), id=ad+"_"+x.contactId, old=S.att.find(a=>a.id===id), st2=x.att||"مرخصی استحقاقی", nw={id,date:ad,contactId:x.contactId,status:st2,notes:x.body};
+    if(old) await ch("att",old,Object.assign({},old,nw)); else await mk("att",nw);
+    return done(`«${st2}» برای ${who} در حضور و غیاب ${jal(ad)} ثبت شد.`); }
+  if(kind==="need"){ await mk("parts",{id:uid(),date:x.date,status:"مورد نیاز",machineId:x.machineId||"",name:title,qty:1,price:0,notes:note});
+    return done("در «قطعات و خرید» به‌عنوان مورد نیاز ثبت شد."); }
+  if(kind==="wash"){ if(!needM()) return false; const c=S.contacts.find(k=>k.id===x.contactId), wk=c&&roleOf(c)!=="راننده"?[c.id]:[];
+    await mk("washes",{id:uid(),date:x.date,machineId:x.machineId,type:/بتن.?زدایی|اسید/.test(x.body)?"بتن‌زدایی / اسیدشویی":"شستشوی کامل",workers:wk,dur:+x.minutes||0,cost:0,score:0,notes:note,taskId:"",due:"",late:0,src:"sms"});
+    return done(`شستشوی ${mName(x.machineId)} ثبت شد.`); }
+  if(kind==="trip"){ if(!needM()) return false; if(!mm||!TRIP_TYPES.includes(mm.type)){ say("این دستگاه سرویس ثبت نمی‌کند."); return false; }
+    const n=Math.min(12,+x.n||0), have=dayTrips(x.machineId,x.date).length, add=Math.max(0,n-have); if(!n) return false;
+    for(let i=0;i<add;i++) await mk("trips",{id:uid(),date:x.date,machineId:x.machineId,driver:x.driver||mm.driver||"",site:"",kind:tripKindOf(mm),material:isHaul(mm)?((/نخاله/.test(x.body)&&"نخاله")||(/ماسه/.test(x.body)&&"ماسه")||(/شن/.test(x.body)&&"شن")||""):"",tons:isHaul(mm)&&x.tons?+(x.tons/n).toFixed(1):0,
+      volume:mm.type==="میکسر"?MIXER_M3:0,tDepart:x.date+"T"+(x.time||"12:00"),stage:4,src:"sms"});
+    return done(add?`${fa(add)} سرویس برای ${mName(x.machineId)} ثبت شد (جمع روز ${fa(have+add)}).`:`راننده ${fa(n)} سرویس گزارش کرده و همین تعداد قبلاً ثبت شده بود.`); }
+  if(kind==="job"){ if(!needC()) return false; const b=x.body, ty=/کارواش|شست/.test(b)?"کارواش":/جوش|تعمیر/.test(b)?"تعمیرات و جوشکاری":/بچینگ|سیلو/.test(b)?"نظافت بچینگ و سیلو":/نظافت|جارو|محوطه/.test(b)?"نظافت محوطه":/تخلیه|بارگیری/.test(b)?"کمک بارگیری / تخلیه":"سایر";
+    await mk("jobs",{id:uid(),date:x.date,contactId:x.contactId,type:ty,area:"",hours:x.minutes?+(x.minutes/60).toFixed(1):0,notes:b,status:"done",q:0,doneAt:x.time||"",src:"sms"});
+    return done(`کار «${ty}» برای ${who} ثبت شد.`); }
+  return false; }
 
 /* ---------- عملکرد رانندگان و ماشین‌آلات ---------- */
 let psub="mach", perfP=30, selD=null, attDay=null;
 const ATT=["حاضر","تأخیر","مأموریت","مرخصی ساعتی","مرخصی استحقاقی","مرخصی استعلاجی","غیبت"];
 const ATT_C={"حاضر":"ok","مأموریت":"ok","تأخیر":"soon","مرخصی ساعتی":"soon","مرخصی استحقاقی":"lv","مرخصی استعلاجی":"lv","غیبت":"due"};
 const WORKED=["حاضر","تأخیر","مأموریت","مرخصی ساعتی"];
-const drivers=()=>S.contacts.filter(c=>c.active!==false&&(c.role||"راننده")==="راننده");
+const drivers=()=>S.contacts.filter(c=>c.active!==false&&roleOf(c)==="راننده");
 function wscore(parts){let s_=0,w=0; for(const [v,wt] of parts) if(v!=null&&!isNaN(v)){s_+=Math.max(0,Math.min(100,v))*wt;w+=wt;} return w?Math.round(s_/w):null;}
 const grade=x=>x==null?["بدون داده",""]:x>=85?["عالی","ok"]:x>=70?["خوب","ok"]:x>=50?["متوسط","soon"]:["ضعیف","due"];
 function machPerf(m,f,t){const n=days(t,f)+1, H=(+LS.get("planH",10)||10);
@@ -1332,7 +1478,7 @@ function vPerfMach(){const t=todayISO(), f=addDays(t,-(perfP-1)), all=S.machines
 function driverForm(c){c=c||{}; return `<div class="grid2"><div><label>نام راننده</label><input id="dnm" value="${esc(c.name||"")}"></div>
   <div><label>موبایل</label><input id="dph" type="tel" dir="ltr" value="${esc(c.phone||"")}" placeholder="0912..."></div>
   <div><label>دستگاه</label><select id="dmc"><option value="">—</option>${S.machines.map(m=>`<option value="${m.id}" ${c.machineId===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select></div>
-  <div><label>نقش</label><select id="drole">${ROLES.map(r=>`<option ${(c.role||"راننده")===r?"selected":""}>${r}</option>`).join("")}</select></div>
+  <div><label>نقش</label><select id="drole">${ROLES.map(r=>`<option ${roleOf(c)===r?"selected":""}>${r}</option>`).join("")}</select></div>
   <div><label>وضعیت</label><select id="dact"><option value="1" ${c.active!==false?"selected":""}>فعال</option><option value="0" ${c.active===false?"selected":""}>غیرفعال</option></select></div>
   <div><label>تاریخ شروع همکاری</label>${jdate("dhire",c.hire||"")}</div><div><label>اعتبار گواهی‌نامه</label>${jdate("dlic",c.licDue||"")}</div></div>
   <label>یادداشت</label><input id="dno" value="${esc(c.notes||"")}">`;}
@@ -1400,7 +1546,7 @@ async function attSet(cid,patch){const d=attDay||todayISO(), id=d+"_"+cid, r=S.a
 
 /* ---------- کارگران محوطه و کارواش ---------- */
 const ROLES=["راننده","کارگر محوطه","کارواش","اپراتور بچینگ","تعمیرکار","اپراتور / سایر"];
-const roleOf=c=>c.role||"راننده";
+const roleOf=c=>c.role||((S.machines.find(m=>m.id===c.machineId)||{}).type==="بچینگ"?"اپراتور بچینگ":"راننده");
 const staff=()=>S.contacts.filter(c=>c.active!==false);
 const workers=()=>staff().filter(c=>roleOf(c)!=="راننده");
 const JOB_T=["نظافت محوطه","کارواش","کمک بارگیری / تخلیه","جابجایی مصالح","نظافت بچینگ و سیلو","بتن‌زدایی درام / شوت","تعمیرات و جوشکاری","سایر"];
@@ -2047,7 +2193,11 @@ function vRecon(){const {f,t}=repRange(), h=haulRep(f,t), hr=h.rows.filter(r=>r.
    ${MATS.map(([k,n,u])=>{const rs=matRecon(k).slice(0,4); return `<div class="item"><div class="t">${n}</div>${rs.length?tbl(["از شمارش","تا شمارش","موجودی اول","ورودی","مصرف نظری","باید باشد","شمارش شد","اختلاف","٪ مصرف"],
      rs.map(r=>[jal(r.from),jal(r.to),f1(r.start),f1(r.rec),f1(r.use),f1(r.exp),f1(r.act),bad(f1(r.diff)+" "+u,r.pct!=null&&Math.abs(r.pct)>5),r.pct==null?"—":bad(f1(r.pct)+"٪",Math.abs(r.pct)>5)]))
      :'<div class="m">برای تطبیق، دست‌کم دو شمارش در دو روز متفاوت لازم است.</div>'}</div>`}).join("")}
-   <div class="note" style="margin-top:6px">اختلاف منفی یعنی کمتر از حد انتظار در انبار است: کسری بار، ریخت‌وپاش، خطای ترازو یا مصرف بیش از طرح اختلاط. بالای ۵٪ مصرف قرمز می‌شود و در استثناها می‌آید.</div></div>`;}
+   <div class="note" style="margin-top:6px">اختلاف منفی یعنی کمتر از حد انتظار در انبار است: کسری بار، ریخت‌وپاش، خطای ترازو یا مصرف بیش از طرح اختلاط. بالای ۵٪ مصرف قرمز می‌شود و در استثناها می‌آید.</div></div>
+  <div class="card"><h3>سوخت‌گیری به تفکیک جایگاه</h3>
+   ${(()=>{const F=S.fuel.filter(x=>inR(x.date,f,t)), by={}; F.forEach(x=>{const k=x.station||"نامشخص", o=by[k]||(by[k]={k,n:0,l:0,c:0,w:0,wn:0}); o.n++; o.l+=+x.liters||0; o.c+=+x.cost||0; if(+x.min>0){o.w+=+x.min; o.wn++;}});
+     const R=Object.values(by).sort((a,b)=>b.n-a.n);
+     return R.length?tbl(["جایگاه","دفعات","لیتر","مبلغ (تومان)","میانگین معطلی (دقیقه)"],R.map(o=>[esc(o.k),fa(o.n),fa(Math.round(o.l)),fa(Math.round(o.c)),o.wn?fa(Math.round(o.w/o.wn)):"—"])):'<div class="empty">در این بازه سوخت‌گیری ثبت نشده.</div>';})()}</div>`;}
 
 /* ---------- بچینگ: اوپراتور × دستگاه، و سیلوها ---------- */
 function siloLast(code){return S.silos.filter(x=>x.silo===code).sort((a,b)=>b.date.localeCompare(a.date))[0];}
@@ -2688,31 +2838,34 @@ document.addEventListener("click",async e=>{
   if(b.id==="gpsStopsBtn"){ try{ await gpsStops(); render(); }catch(e){ alert(e.message); } return; }
   if(b.dataset.zsug){ const [la,lo,k]=b.dataset.zsug.split("|"), nm=prompt("نام این محدوده؟",k==="mine"?"معدن":"جایگاه سوخت"); if(!nm) return;
     try{ await saveZones([...(gps.st.zones||[]),{name:nm.trim(),kind:k,lat:+la,lon:+lo,r:k==="mine"?600:250}]); }catch(e){ alert(e.message); } return; }
-  if(b.id==="bulkPh"){ const norm=x=>toEn(String(x||"")).replace(/ي/g,"ی").replace(/ك/g,"ک").replace(/[\s\u200c.\-_,،:;()]+/g,""), ups=[], bad=[], used=new Set(S.contacts.map(c=>normPhone(c.phone)).filter(Boolean));
+  if(b.id==="bulkPh"){ const norm=x=>toEn(String(x||"")).replace(/ي/g,"ی").replace(/ك/g,"ک").replace(/[\s\u200c.\-_,،:;()]+/g,""), ups=[], bad=[], used=new Set(S.contacts.flatMap(c=>[normPhone(c.phone),normPhone(c.phone2)]).filter(Boolean));
     for(const ln of gv("bph").split(/\n/)){ const t=toEn(ln).trim(); if(!t) continue;
       const pm=/(?:\+98|0098|98|0)?9\d{2}[\s-]?\d{3}[\s-]?\d{4}/.exec(t); if(!pm){ bad.push(ln.trim()); continue; }
       const ph="0"+pm[0].replace(/\D/g,"").slice(-10), rest=t.replace(pm[0]," "), cm=/(^|\D)(\d{5})(\D|$)/.exec(rest), nm=norm(rest.replace(/\d+/g,""));
       let c=null; if(cm){ const mc=S.machines.find(m=>String(m.code||"")===cm[2]); c=mc&&S.contacts.find(x=>x.machineId===mc.id&&x.active!==false); }
       if(!c&&nm){ const ex=S.contacts.filter(x=>norm(x.name)===nm), inc=ex.length?ex:S.contacts.filter(x=>norm(x.name).includes(nm)||nm.includes(norm(x.name))); if(inc.length===1) c=inc[0]; }
-      if(!c||used.has(ph.slice(-10))||ups.some(u=>u.id===c.id)){ bad.push(ln.trim()); continue; }
-      used.add(ph.slice(-10)); ups.push(Object.assign({},c,{phone:ph})); }
+      if(!c||used.has(ph.slice(-10))||ups.some(u=>u.id===c.id)||(normPhone(c.phone)&&normPhone(c.phone2))){ bad.push(ln.trim()); continue; }
+      used.add(ph.slice(-10)); ups.push(Object.assign({},c,normPhone(c.phone)?{phone2:ph}:{phone:ph})); }
     if(!ups.length) return alert("هیچ خطی با پرسنل جور نشد. هر خط باید نام (یا کد ماشین) و شماره‌ی موبایل داشته باشد.");
     for(const u of ups) await save("contacts",u);
     alert(fa(ups.length)+" شماره ثبت شد."+(bad.length?"\n"+fa(bad.length)+" خط جور نشد:\n"+bad.slice(0,8).join("\n"):"")); return; }
   if(b.dataset.conedit){ const c=S.contacts.find(x=>x.id===b.dataset.conedit); if(!c) return;
     showModal(`<h3 style="margin:0 0 6px">ویرایش ${esc(c.name)}</h3>
      <label>نام</label><input id="cen" value="${esc(c.name||"")}">
-     <label>شماره موبایل</label><input id="cep" type="tel" inputmode="tel" dir="ltr" placeholder="0912..." value="${esc(c.phone||"")}">
+     <div class="grid2"><div><label>شماره موبایل</label><input id="cep" type="tel" inputmode="tel" dir="ltr" placeholder="0912..." value="${esc(c.phone||"")}"></div>
+     <div><label>شماره‌ی دوم</label><input id="cep2" type="tel" inputmode="tel" dir="ltr" value="${esc(c.phone2||"")}"></div></div>
      <div class="grid2"><div><label>نقش</label><select id="cer">${ROLES.map(r=>`<option ${roleOf(c)===r?"selected":""}>${r}</option>`).join("")}</select></div>
      <div><label>وضعیت</label><select id="cea"><option value="1" ${c.active===false?"":"selected"}>فعال</option><option value="0" ${c.active===false?"selected":""}>غیرفعال</option></select></div></div>
      <label>دستگاه</label><select id="cem"><option value="">—</option>${S.machines.map(m=>`<option value="${m.id}" ${m.id===c.machineId?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
      <div class="row" style="margin-top:9px"><button class="primary" data-consave="${c.id}">ذخیره</button><button class="ghost" data-jdclose="1">انصراف</button></div>`);
     return; }
   if(b.dataset.consave){ const c=S.contacts.find(x=>x.id===b.dataset.consave); if(!c) return;
-    const nm=gv("cen").trim(), ph=toEn(gv("cep")).replace(/[^\d+]/g,""), k=normPhone(ph);
-    if(!nm) return alert("نام را وارد کنید."); if(ph&&k.length<10) return alert("شماره موبایل کامل نیست.");
-    const dup=k&&S.contacts.find(x=>x.id!==c.id&&normPhone(x.phone)===k); if(dup) return alert("این شماره قبلاً برای «"+dup.name+"» ثبت شده است.");
-    const n=Object.assign({},c,{name:nm,phone:ph,role:gv("cer"),machineId:gv("cem"),active:gv("cea")==="1"});
+    const nm=gv("cen").trim(), ph=toEn(gv("cep")).replace(/[^\d+]/g,""), ph2=toEn(gv("cep2")).replace(/[^\d+]/g,"");
+    if(!nm) return alert("نام را وارد کنید.");
+    for(const p of [ph,ph2]){ if(!p) continue; const k=normPhone(p); if(k.length<10) return alert("شماره موبایل کامل نیست.");
+      const dup=S.contacts.find(x=>x.id!==c.id&&(normPhone(x.phone)===k||normPhone(x.phone2)===k)); if(dup) return alert("شماره‌ی "+p+" قبلاً برای «"+dup.name+"» ثبت شده است."); }
+    if(ph&&ph2&&normPhone(ph)===normPhone(ph2)) return alert("دو شماره یکی هستند.");
+    const n=Object.assign({},c,{name:nm,phone:ph||ph2,phone2:ph?ph2:"",role:gv("cer"),machineId:gv("cem"),active:gv("cea")==="1"});
     modalClose(); await save("contacts",n); return; }
   if(b.dataset.sfopen){ const [mid,day]=b.dataset.sfopen.split("|"); sfModal(mid,day); return; }
   if(b.dataset.sfsave){ const [mid,day]=b.dataset.sfsave.split("|"), m=S.machines.find(x=>x.id===mid); if(!m) return;
@@ -2847,11 +3000,25 @@ document.addEventListener("click",async e=>{
   if(b.id==="smsSync30"){ b.disabled=true; await syncSms(true,30); b.disabled=false; return; }
   if(b.dataset.smsf){ smsF=b.dataset.smsf; render(); return; }
   if(b.dataset.sms2){ const x=S.sms.find(y=>y.id===b.dataset.sid); if(x) await smsConvert(b.dataset.sms2,x); return; }
-  if(b.id==="addCon"){ const nm=gv("cnm"), ph=gv("cph"); if(!nm) return alert("نام راننده را وارد کنید."); if(normPhone(ph).length<10) return alert("شماره موبایل معتبر وارد کنید.");
-    if(contactOf(ph)) return alert("این شماره قبلاً ثبت شده."); await save("contacts",{id:uid(),name:nm,phone:toEn(ph),machineId:gv("cmc")}); return; }
-  if(b.dataset.condel){ if(confirm("این راننده حذف شود؟ پیام‌های قبلی او می‌مانند.")) await del("contacts",b.dataset.condel); return; }
-  if(b.id==="addSmsM"){ const c=S.contacts.find(x=>x.id===gv("msd")), body=gv("msb"); if(!c) return alert("ابتدا راننده را ثبت کن."); if(!body) return alert("متن پیامک را وارد کن.");
-    S.sms.push(smsRecord("man"+uid(),Date.now(),c.phone,body)); await persist("sms"); render(); if(LS.get("smsAi",true)) aiClassify(); return; }
+  if(b.dataset.smsrev){ const x=S.sms.find(y=>y.id===b.dataset.smsrev); if(!x) return; if(x.status==="done"&&!confirm("ثبتِ این پیام لغو و رکوردهای ساخته‌شده از آن حذف شود؟")) return; await smsRevert(x); return; }
+  if(b.dataset.smsdel){ const x=S.sms.find(y=>y.id===b.dataset.smsdel); if(!x) return;
+    if(!confirm(x.status==="done"&&(x.made||[]).length?"پیام حذف شود؟ رکوردهایی که از آن ثبت شده سر جایشان می‌مانند (برای حذف آن‌ها اول «لغو ثبت» را بزن).":"این پیام حذف شود؟")) return;
+    await del("sms",x.id); return; }
+  if(b.id==="smsRe"){ b.disabled=true; const [n,a]=await smsReanalyze(); alert(fa(n)+" پیام دوباره دسته‌بندی شد و "+fa(a)+" گزارش خودکار ثبت شد."); render(); return; }
+  if(b.id==="smsMerge"){ const ids=[...document.querySelectorAll("[data-smssel]:checked")].map(e=>e.dataset.smssel), L=S.sms.filter(x=>ids.includes(x.id)).sort((p,q)=>p.ts-q.ts);
+    if(L.length<2) return alert("دست‌کم دو پیام را تیک بزن.");
+    if(L.some(x=>x.status==="done")) return alert("یکی از پیام‌ها قبلاً ثبت شده؛ اول «لغو ثبت» آن را بزن.");
+    if(new Set(L.map(x=>x.contactId||x.phone)).size>1&&!confirm("فرستنده‌ی این پیام‌ها یکی نیست. باز هم ادغام شوند؟")) return;
+    const base=L[0], c=S.contacts.find(k=>k.id===base.contactId), nr=Object.assign(smsRecord(base.id,base.ts,base.phone,L.map(x=>x.body).join("\n"),c),{merged:L.reduce((t,x)=>t+(x.merged||1),0)});
+    for(const x of L.slice(1)) await del("sms",x.id);
+    await save("sms",nr); await smsAutoRun([nr.id]); return; }
+  if(b.id==="addCon"){ const nm=gv("cnm").trim(), ph=toEn(gv("cph")).replace(/[^\d+]/g,""), ph2=toEn(gv("cph2")).replace(/[^\d+]/g,""); if(!nm) return alert("نام را وارد کنید.");
+    for(const p of [ph,ph2]){ if(p&&normPhone(p).length<10) return alert("شماره موبایل کامل نیست."); if(p&&contactOf(p)) return alert("شماره‌ی "+p+" قبلاً برای «"+contactOf(p).name+"» ثبت شده."); }
+    if(ph&&ph2&&normPhone(ph)===normPhone(ph2)) return alert("دو شماره یکی هستند.");
+    await save("contacts",{id:uid(),name:nm,phone:ph||ph2,phone2:ph?ph2:"",role:gv("crl"),machineId:gv("cmc"),active:true}); return; }
+  if(b.dataset.condel){ if(confirm("این نفر حذف شود؟ پیام‌های قبلی او می‌مانند.")) await del("contacts",b.dataset.condel); return; }
+  if(b.id==="addSmsM"){ const c=S.contacts.find(x=>x.id===gv("msd")), body=gv("msb"); if(!c) return alert("ابتدا فرستنده را در فهرست پرسنل ثبت کن."); if(!body) return alert("متن پیامک را وارد کن.");
+    const nr=smsRecord("man"+uid(),Date.now(),c.phone,body,c); await save("sms",nr); if(nr.type==="report"&&LS.get("smsAi",true)) await aiClassify(); await smsAutoRun([nr.id]); return; }
   if(b.id==="micFab"){ await voiceModal(); return; }
   if(b.id==="vMore"){ const t=await voiceText(); if(t){ const el=document.getElementById("vtx"); if(el) el.value=(el.value?el.value+" ":"")+t; } return; }
   if(b.dataset.vsave){ const t=gv("vtx"); if(!t) return alert("متن خالی است."); modalClose(); await noteTo(b.dataset.vsave,t); alert("ذخیره شد."); return; }
@@ -2983,6 +3150,7 @@ document.addEventListener("change",async e=>{const el=e.target;
   if(el&&el.dataset&&el.dataset.atth){ await attSet(el.dataset.atth,{hours:+toEn(el.value)||0}); return; }
   if(el&&el.dataset&&el.dataset.atto){ await attSet(el.dataset.atto,{ot:+toEn(el.value)||0}); return; }
   if(el&&el.id==="smsNotify"){ LS.set("smsNotify",el.checked); pushWatch(); }
+  if(el&&el.id==="smsAuto") LS.set("smsAuto",el.checked);
   const sid=el&&el.dataset&&(el.dataset.smst||el.dataset.smsc||el.dataset.smsm||el.dataset.smsmc);
   if(sid){ const x=S.sms.find(y=>y.id===sid); if(!x) return; const u={edited:true};
     if(el.dataset.smst) u.type=el.value; if(el.dataset.smsc) u.cause=el.value||null; if(el.dataset.smsm) u.minutes=+toEn(el.value)||null; if(el.dataset.smsmc) u.machineId=el.value;
@@ -3175,7 +3343,7 @@ render(); load();
         var touched = applyIn(res);
         if (touched.length) {
           applying = true;
-          for (i = 0; i < touched.length; i++) { reshadow(touched[i]); await _persist(touched[i]); }
+          for (i = 0; i < touched.length; i++) { reshadow(touched[i]); await _persist(touched[i]); if (window.__undoResnap) window.__undoResnap(touched[i]); }
           applying = false;
         }
         got += (res.count || 0);
@@ -3521,7 +3689,7 @@ render(); load();
       const d = clean(m.driver);
       if (!d || names[d]) continue; names[d] = 1;
       out.contacts.push({
-        id: uid(), role: m.type === "لودر" ? "اپراتور / سایر" : "راننده",
+        id: uid(), role: m.type === "بچینگ" ? "اپراتور بچینگ" : m.type === "لودر" ? "اپراتور / سایر" : "راننده",
         name: d, phone: "", machineId: m.id, hire: "", licDue: "", active: true, notes: ""
       });
     }
@@ -3766,6 +3934,82 @@ render(); load();
 
   window.__sbImport = { read: readXlsx };
   boot();
+})();
+
+</script>
+<script>
+/* ===== برگشت عملیات: هر تغییر داده ثبت می‌شود و با یک دکمه برمی‌گردد ===== */
+(function () {
+  "use strict";
+  var COLN = { machines: "دستگاه", contacts: "پرسنل", sms: "پیام", trips: "سرویس", faults: "خرابی", fuel: "سوخت‌گیری", prod: "تولید روزانه", opprod: "تولید اوپراتور",
+    parts: "قطعه", returns: "بتن برگشتی", silos: "شمارش سیلو", counts: "شمارش مواد", receipts: "ورود مصالح", scores: "کسری کارکرد", norms: "نُرم", pumpjobs: "پمپاژ",
+    att: "حضور و غیاب", washes: "شستشو", jobs: "کار محوطه", tasks: "کار", incidents: "حادثه", stops: "توقف تولید", log: "سابقه‌ی دستگاه", notes: "یادداشت", ideas: "ایده",
+    check: "مورد چک‌لیست", ticks: "تیک چک‌لیست", rem: "یادآوری", tires: "لاستیک", mixes: "طرح اختلاط", batches: "بچ", calib: "کالیبراسیون", reports: "گزارش", looks: "بازدید ظاهری" };
+  var snap = {}, stack = [], gid = 0, undoing = false, tm = 0, MAXG = 40;
+  function strip(r) { var o = Object.assign({}, r); delete o.u; return JSON.stringify(o); }
+  function resnap(col) { var m = {}, a = S[col] || [], i; for (i = 0; i < a.length; i++) if (a[i] && a[i].id != null) m[a[i].id] = strip(a[i]); snap[col] = m; }
+  window.__undoResnap = resnap;
+  function label(g) { var by = {}, keys;
+    g.ch.forEach(function (x) { var v = x.o == null ? "افزودن" : x.gone ? "حذف" : "تغییر", k = v + "|" + x.c; by[k] = (by[k] || 0) + 1; });
+    keys = Object.keys(by);
+    return keys.slice(0, 3).map(function (k) { var p = k.split("|"); return p[0] + " " + (by[k] > 1 ? fa(by[k]) + " " : "") + (COLN[p[1]] || p[1]); }).join("، ") + (keys.length > 3 ? " و…" : ""); }
+  function rec(col) {
+    if (!snap[col]) { resnap(col); return; }
+    var old = snap[col], cur = {}, ch = [], a = S[col] || [], i, r, j, id, g, now = Date.now();
+    for (i = 0; i < a.length; i++) { r = a[i]; if (!r || r.id == null) continue; j = strip(r); cur[r.id] = j;
+      if (!(r.id in old)) ch.push({ c: col, id: r.id, o: null }); else if (old[r.id] !== j) ch.push({ c: col, id: r.id, o: old[r.id] }); }
+    for (id in old) if (!(id in cur)) ch.push({ c: col, id: id, o: old[id], gone: true });
+    snap[col] = cur;
+    if (undoing || !ch.length || (gid === 0 && col === "check")) return;   // فهرست پیش‌فرض اولین اجرا قابل برگشت نیست
+    g = stack[stack.length - 1];
+    if (!g || g.gid !== gid || now - g.at > 20000) { g = { gid: gid, at: now, ch: [] }; stack.push(g); if (stack.length > MAXG) stack.shift(); }
+    ch.forEach(function (x) { var y = g.ch.find(function (z) { return z.c === x.c && String(z.id) === String(x.id); });
+      if (!y) g.ch.push(x); else y.gone = !!x.gone; });           // قدیمی‌ترین حالت هر رکورد در گروه نگه داشته می‌شود
+    g.ch = g.ch.filter(function (y) { return !(y.o == null && y.gone); });   // در همین عمل ساخته و حذف شده
+    g.at = now; if (!g.ch.length) { stack.pop(); return; }
+    g.label = label(g); toast(g.label + " انجام شد", true);
+  }
+  var _p = window.persist;
+  window.persist = function (col) { try { rec(col); } catch (e) { } return _p.apply(this, arguments); };
+  async function undoLast() {
+    var g = stack.pop(); if (!g) { toast("چیزی برای برگشت نیست", false); return; }
+    undoing = true;
+    try { var cols = {}, list = g.ch.slice().reverse(), k, x, a, i;
+      for (k = 0; k < list.length; k++) { x = list[k]; a = S[x.c]; if (!Array.isArray(a)) continue;
+        i = a.findIndex(function (r) { return String(r.id) === String(x.id); });
+        if (x.o == null) { if (i >= 0) await window.del(x.c, a[i].id); }
+        else { var r0 = JSON.parse(x.o); a = S[x.c]; i = a.findIndex(function (r) { return String(r.id) === String(x.id); }); if (i >= 0) a[i] = r0; else a.push(r0); cols[x.c] = 1; } }
+      for (k in cols) await window.persist(k);
+      g.ch.forEach(function (y) { resnap(y.c); });
+    } finally { undoing = false; }
+    if (typeof render === "function") render();
+    if (typeof syncNotifications === "function") syncNotifications();
+    toast("«" + g.label + "» برگشت داده شد", false);
+  }
+  function toast(text, withBtn) {
+    var el = document.getElementById("undoToast");
+    if (!el) { el = document.createElement("div"); el.id = "undoToast";
+      el.style.cssText = "position:fixed;left:12px;right:12px;bottom:86px;z-index:70;display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:14px;background:#111827;color:#fff;font-size:14px;box-shadow:0 6px 20px #0007";
+      document.body.appendChild(el); }
+    el.innerHTML = '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(text) + "</span>" + (withBtn ? '<button data-undo="1" style="min-height:0;padding:6px 14px;border-radius:10px;background:#f59e0b;color:#111;border:0;font-weight:700;white-space:nowrap">برگشت</button>' : "");
+    el.style.display = "flex"; clearTimeout(tm); tm = setTimeout(function () { el.style.display = "none"; }, withBtn ? 9000 : 3500);
+  }
+  function history() {
+    var h = '<div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">برگشت عملیات</h3><button class="ghost" data-jdclose="1">بستن</button></div><div style="max-height:58vh;overflow:auto;margin-top:8px">';
+    if (!stack.length) h += '<div class="empty">در این نشست تغییری ثبت نشده است.</div>';
+    else h += stack.slice().reverse().map(function (g, i) { var d = new Date(g.at);
+      return '<div class="item"><div class="t">' + esc(g.label) + '</div><div class="m">' + faNum(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")) + "</div>" +
+        (i === 0 ? '<div class="row" style="margin-top:6px"><button class="primary" data-undo="1">برگشت این عمل</button></div>' : "") + "</div>"; }).join("") +
+      '<div class="note">عملیات به ترتیب، از آخر به اول برمی‌گردند. با بستن اپ این فهرست خالی می‌شود.</div>';
+    showModal(h + "</div>");
+  }
+  document.addEventListener("click", function (e) { var t = e.target; if (t && t.closest && (t.closest("#undoBtn") || t.closest("[data-undo]") || t.closest("#undoToast"))) return; gid++; }, true);
+  document.addEventListener("change", function () { gid++; }, true);
+  document.addEventListener("click", async function (e) { var t = e.target; if (!t || !t.closest) return;
+    if (t.closest("[data-undo]")) { var inModal = !!t.closest("#modal"); await undoLast(); if (inModal) history(); return; }
+    if (t.closest("#undoBtn")) history(); });
+  var iv = setInterval(function () { if (typeof ready !== "undefined" && ready) { clearInterval(iv); COLS.forEach(function (c) { if (!snap[c]) resnap(c); }); } }, 300);
+  window.__undo = { last: undoLast, stack: stack };
 })();
 
 </script>
