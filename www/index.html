@@ -205,7 +205,7 @@ const DUMP=["کمپرسی","کمپرسی تریلی"];
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۲۳ آبان — ۶";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const APP_BUILD="۲۴ آبان — ۷";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -294,6 +294,7 @@ async function load(){
   checkRem(); setInterval(checkRem,30000);
   syncNotifications();
   setTimeout(()=>genWeekly(false),4000);
+  setTimeout(()=>{ try{ shDraftRestore(); }catch(e){} },900);
   setTimeout(()=>{ if(LS.get("autoBk",true)&&Date.now()-LS.get("lastBk",0)>20*3600e3){ const c=LS.get("cfg",{}); if(c.url&&c.token) serverBackup(true); } },7000);
   const AppP=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;
   pushWatch(); setTimeout(()=>syncSms(false),2500);
@@ -662,7 +663,8 @@ async function gpsLoad(day,force,soft){ if(!gpsUrl()||gps.busy) return; const ha
   }catch(e){ gps.err=e.message; }
   gps.busy=false; gps.day=day; gps.at=Date.now();
   if(tab==="fleet"){ if(soft&&had&&gps.st&&!gps.err&&document.getElementById("gmap")) gmapDraw(); else render(); } }   // تازه‌سازی خودکار فقط نقشه را عوض می‌کند تا فرم‌های باز بسته نشوند
-const gpsMach=code=>code?S.machines.find(m=>String(m.code||"")===String(code)):null;
+const gcode=m=>String((m&&(m.gpsCode||m.code))||"");
+const gpsMach=code=>{ if(!code) return null; const c=String(code); return S.machines.find(m=>m.gpsCode&&String(m.gpsCode)===c)||S.machines.find(m=>!m.gpsCode&&!m.gpsNone&&String(m.code||"")===c)||null; };
 setInterval(()=>{ if(tab!=="fleet"||!gpsUrl()||document.hidden) return; const a=document.activeElement; if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
   if(!document.getElementById("modal").hidden) return; gpsLoad(fleetDay||todayISO(),true,true); },30000);
 const tsISO=ts=>{const d=new Date(ts); return localISO(d)+"T"+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");};
@@ -703,15 +705,26 @@ function gmapDraw(){ const el=document.getElementById("gmap"), st=gps.st; if(!el
     if(on) h+=`<div style="position:absolute;left:${x+12}px;top:${y-9}px;font-size:12px;font-weight:700;background:#fff;color:#111;padding:1px 6px;border-radius:6px;box-shadow:0 1px 4px #0005;white-space:nowrap;z-index:6;pointer-events:none">${esc(m?m.name:(d.name||d.plate||""))}</div>`; });
   h+=`<div style="position:absolute;left:4px;bottom:2px;font-size:9px;color:#333;background:#fffa;padding:0 4px;border-radius:4px;pointer-events:none">© OpenStreetMap</div>`;
   el.innerHTML=h;
-  if(!el._bound){ el._bound=1; let p0=null, raf=0;
-    el.addEventListener("pointerdown",e=>{ if(e.target.closest("button")) return; p0={x:e.clientX,y:e.clientY,cx:mercX(gmap.lo,gmap.z),cy:mercY(gmap.la,gmap.z)}; try{el.setPointerCapture(e.pointerId);}catch(_){} });
-    el.addEventListener("pointermove",e=>{ if(!p0) return; gmap.lo=unX(p0.cx-(e.clientX-p0.x),gmap.z); gmap.la=unY(p0.cy-(e.clientY-p0.y),gmap.z); if(!raf) raf=requestAnimationFrame(()=>{raf=0; gmapDraw();}); });
-    const end=()=>{p0=null;}; el.addEventListener("pointerup",end); el.addEventListener("pointercancel",end); } }
+  if(!el._bound){ el._bound=1; let p0=null, raf=0, pin=null, lastTap=0; const pts=new Map();
+    const redraw=()=>{ if(!raf) raf=requestAnimationFrame(()=>{raf=0; gmapDraw();}); };
+    const zoomAt=(nz,cx,cy)=>{ nz=Math.max(5,Math.min(18,nz)); if(nz===gmap.z) return; const r=el.getBoundingClientRect(), W=r.width, H=r.height;
+      const ox=cx-r.left-W/2, oy=cy-r.top-H/2, la=unY(mercY(gmap.la,gmap.z)+oy,gmap.z), lo=unX(mercX(gmap.lo,gmap.z)+ox,gmap.z);   // نقطه‌ی زیر انگشت ثابت می‌ماند
+      gmap.z=nz; gmap.lo=unX(mercX(lo,nz)-ox,nz); gmap.la=unY(mercY(la,nz)-oy,nz); redraw(); };
+    el.addEventListener("pointerdown",e=>{ if(e.target.closest("button")) return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); try{el.setPointerCapture(e.pointerId);}catch(_){}
+      if(pts.size===2){ const [a,b]=[...pts.values()]; pin={d:Math.hypot(a.x-b.x,a.y-b.y)||1,z:gmap.z,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2}; p0=null; return; }
+      const now=Date.now(); if(now-lastTap<300){ zoomAt(gmap.z+1,e.clientX,e.clientY); lastTap=0; p0=null; return; } lastTap=now;
+      p0={x:e.clientX,y:e.clientY,cx:mercX(gmap.lo,gmap.z),cy:mercY(gmap.la,gmap.z),z:gmap.z}; });
+    el.addEventListener("pointermove",e=>{ if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(pin&&pts.size>=2){ const [a,b]=[...pts.values()]; const k=Math.hypot(a.x-b.x,a.y-b.y)/pin.d; zoomAt(Math.round(pin.z+Math.log2(k)),pin.cx,pin.cy); return; }
+      if(!p0||p0.z!==gmap.z) return; gmap.lo=unX(p0.cx-(e.clientX-p0.x),gmap.z); gmap.la=unY(p0.cy-(e.clientY-p0.y),gmap.z); redraw(); });
+    const end=e=>{ pts.delete(e.pointerId); if(pts.size<2) pin=null; if(!pts.size) p0=null; else if(pts.size===1){ const q=[...pts.values()][0]; p0={x:q.x,y:q.y,cx:mercX(gmap.lo,gmap.z),cy:mercY(gmap.la,gmap.z),z:gmap.z}; } };
+    el.addEventListener("pointerup",end); el.addEventListener("pointercancel",end);
+    el.addEventListener("wheel",e=>{ e.preventDefault(); zoomAt(gmap.z+(e.deltaY<0?1:-1),e.clientX,e.clientY); },{passive:false}); } }
 function gmapBox(){ const d=gps.st&&gps.st.devices.find(x=>gKey(x)===gmap.sel), m=d&&gpsMach(d.code);
   setTimeout(gmapDraw,0);
   return `<div id="gmap" style="position:relative;height:330px;overflow:hidden;border-radius:12px;background:#dfe7ec;touch-action:none;margin-top:8px;direction:ltr"></div>
    <div class="row" style="margin-top:6px"><button class="ghost" data-gz="1">+</button><button class="ghost" data-gz="-1">−</button><button class="ghost" data-gfit="plant">کارخانه</button><button class="ghost" data-gfit="near">ناوگان</button><button class="ghost" data-gfit="all">همه</button></div>
-   <div class="m" style="margin-top:4px">${d?`<b>${esc(m?m.name:(d.name||d.plate))}</b> • ${esc(d.state)}${d.state==="در حرکت"?" • "+fa(d.s)+" کیلومتر بر ساعت":""}${d.inPlant?" • در کارخانه":" • "+f1(d.dist/1000)+" کیلومتر از کارخانه"}${d.lastData?" • "+esc(d.lastData):""}`:"روی هر نقطه بزن تا نام دستگاه را ببینی. سبز: در حرکت، مشکی: متوقف، خاکستری: آفلاین."}</div>`;}
+   <div class="m" style="margin-top:4px">${d?`<b>${esc(m?m.name:(d.name||d.plate))}</b> • ${esc(d.state)}${d.state==="در حرکت"?" • "+fa(d.s)+" کیلومتر بر ساعت":""}${d.inPlant?" • در کارخانه":" • "+f1(d.dist/1000)+" کیلومتر از کارخانه"}${d.lastData?" • "+esc(d.lastData):""}`:"روی هر نقطه بزن تا نام دستگاه را ببینی. با دو انگشت یا دو ضربه بزرگ‌نمایی کن. سبز: در حرکت، مشکی: متوقف، خاکستری: آفلاین (آخرین جایی که ردیاب دیده شده)."}</div>`;}
 /* توقف‌گاه‌های پرتکرار کمپرسی‌ها در ۱۴ روز اخیر، برای پیدا کردن معدن و جایگاه سوخت */
 async function gpsStops(){ const t=todayISO(), r=await gpsGet("/gps/trips?from="+addDays(t,-13)+"&to="+t), by={};
   for(const g of r.trips||[]){ if(!g.dest||!(g.stopMin>=3)) continue; const m=gpsMach(g.code);
@@ -745,13 +758,14 @@ function gpsCard(day){ const t=todayISO(), url=gpsUrl(), cf=LS.get("gpsCfg",{})|
   if(!url) return `<div class="card"><h3>موقعیت زنده (GPS)</h3><div class="empty">سرویس GPS هنوز وصل نشده است.</div>${set}</div>`;
   if(!gps.st) return `<div class="card"><h3>موقعیت زنده (GPS)</h3><div class="${gps.err?"note":"empty"}" style="${gps.err?"color:var(--bad)":""}">${gps.err?esc(gps.err):"در حال دریافت…"}</div>${set}</div>`;
   const mv=d=>d.state==="در حرکت", D=[...gps.st.devices].sort((a,b)=>mv(b)-mv(a)||(a.inPlant-b.inPlant)||a.dist-b.dist), cnt=k=>D.filter(k).length;   // سرعتِ آخرین رکوردِ ردیاب آفلاین معتبر نیست
-  const codes=new Set(D.map(d=>String(d.code))), noGps=D.some(d=>!d.plate)?[]:S.machines.filter(m=>m.status!=="غیرفعال"&&TRIP_TYPES.concat(["کشنده"]).includes(m.type)&&!codes.has(String(m.code||"")));
+  const codes=new Set(D.map(d=>String(d.code))), noGps=S.machines.filter(m=>m.status!=="غیرفعال"&&!m.gpsNone&&TRIP_TYPES.concat(["کشنده"]).includes(m.type)&&!codes.has(gcode(m))), noTrk=S.machines.filter(m=>m.status!=="غیرفعال"&&m.gpsNone);
   const off=D.filter(d=>d.state==="آفلاین");
   const GA=gps.day===day?gps.trips:[], G=GA.filter(gpsIsSvc), noMine=GA.filter(g=>!gpsIsSvc(g)), by={}; G.forEach(g=>{(by[g.code]=by[g.code]||[]).push(g);});
   const rows=Object.keys(by).map(c=>{const m=gpsMach(c), reg=m?dayTrips(m.id,day).length:0, n=by[c].length; return {c,m,n,reg,min:Math.round(sumBy(by[c],x=>x.min)/n)};}).sort((a,b)=>Math.abs(b.n-b.reg)-Math.abs(a.n-a.reg));
-  const regOnly=S.machines.filter(m=>codes.has(String(m.code||""))&&dayTrips(m.id,day).length&&!by[String(m.code)]), un=gpsUnreg(day);
+  const regOnly=S.machines.filter(m=>!m.gpsNone&&codes.has(gcode(m))&&dayTrips(m.id,day).length&&!by[gcode(m)]), un=gpsUnreg(day);
   return `<div class="card"><h3>موقعیت زنده (GPS)${gps.err?'<span class="tag due">قطع</span>':`<span class="tag ok">${fa(gps.st.age||0)} ثانیه پیش</span>`}</h3>
    ${gps.err?`<div class="note" style="color:var(--bad)">${esc(gps.err)}</div>`:gps.st.error?`<div class="note" style="color:var(--bad)">یکی از دو پنل پاسخ نمی‌دهد — ${esc(gps.st.error)}</div>`:""}
+   ${gps.st.sources?`<div class="m">${Object.entries(gps.st.sources).map(([k,v])=>`${k==="uf"?"یوفایندر (میکسر و پمپ)":"پیام GPS (کمپرسی)"}: ${v.ok?`<b style="color:var(--ok)">وصل</b> • ${fa(v.devices||0)} ردیاب • آخرین دریافت ${v.age==null?"—":v.age<120?fa(v.age)+" ثانیه":fa(Math.round(v.age/60))+" دقیقه"} پیش`:`<b style="color:var(--bad)">قطع</b> ${esc(v.error||"")}`}`).join("<br>")}</div>`:""}
    <div class="kpis"><div class="kpi"><div class="n">${fa(cnt(mv))}</div><div class="l">در حرکت</div></div>
     <div class="kpi"><div class="n">${fa(cnt(d=>d.inPlant))}</div><div class="l">داخل کارخانه</div></div>
     <div class="kpi"><div class="n">${fa(cnt(d=>!d.inPlant&&d.state!=="آفلاین"))}</div><div class="l">بیرون</div></div>
@@ -762,7 +776,9 @@ function gpsCard(day){ const t=todayISO(), url=gpsUrl(), cf=LS.get("gpsCfg",{})|
      <div class="m">${mv(d)?fa(d.s)+" کیلومتر بر ساعت • ":""}${d.inPlant?"":f1(d.dist/1000)+" کیلومتر از کارخانه • "}${esc(d.lastData||"")}${m?"":d.plate?" • در فهرست ماشین‌آلات پیدا نشد":" • پلاک هنوز از پنل نرسیده"}</div>
      <div class="row" style="margin-top:6px"><a class="chip" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${d.la},${d.lo}">نقشه</a></div></div>`}).join("")}</details>
    ${off.length?`<div class="note" style="color:var(--bad);margin-top:6px">${fa(off.length)} ردیاب بیش از ۲۴ ساعت است داده نفرستاده؛ برای این دستگاه‌ها سرویسی از GPS شمرده نمی‌شود.</div>`:""}
-   ${noGps.length?`<details style="margin-top:6px"><summary>${fa(noGps.length)} دستگاه در پنل ردیاب نیستند</summary><div class="m">${noGps.map(m=>esc(m.name)).join("، ")}</div></details>`:""}
+   ${noGps.length?`<details style="margin-top:6px"><summary>${fa(noGps.length)} دستگاه در پنل ردیاب نیستند</summary><div class="m">${noGps.map(m=>esc(m.name)).join("، ")}</div><div class="note">اگر پلاک عوض شده یا ردیاب ندارد، از «اتصال دستگاه‌ها به ردیاب» درستش کنید.</div></details>`:""}
+   ${noTrk.length?`<div class="m" style="margin-top:4px">بدون ردیاب: ${noTrk.map(m=>esc(m.name)+(m.gpsVia?" (با "+esc(mName(m.gpsVia))+")":"")).join("، ")}</div>`:""}
+   <div class="row" style="margin-top:8px"><button class="ghost" id="gpsMapEd">🔗 اتصال دستگاه‌ها به ردیاب${D.filter(d=>!gpsMach(d.code)).length?" ("+fa(D.filter(d=>!gpsMach(d.code)).length)+" ردیاب بی‌صاحب)":""}</button></div>
    <h3 style="margin-top:12px">سرویس‌های GPS در برابر ثبت‌شده — ${day===t?"امروز":jal(day)}</h3>
    ${rows.length||regOnly.length?tbl(["دستگاه","GPS","ثبت‌شده","میانگین سیکل (دقیقه)",""],[...rows.map(r=>[esc(r.m?r.m.name:r.c),fa(r.n),fa(r.reg),fa(r.min),r.n===r.reg?'<span class="tag ok">جور</span>':bad(r.reg>r.n?fa(r.reg-r.n)+" سرویس اضافه ثبت شده":fa(r.n-r.reg)+" سرویس ثبت نشده",true)]),
       ...regOnly.map(m=>[esc(m.name),"۰",fa(dayTrips(m.id,day).length),"—",bad("GPS خروجی ندیده",true)])])
@@ -3483,6 +3499,8 @@ function shSum(sh){ const R=sh.rows||[], M=sh.meta||{};
 
 /* ---------- وضعیت کاشی‌های امروز ---------- */
 let tdDay=null;
+/* ورودی فایل بیرون از صفحه‌ی بازسازی‌شونده ساخته می‌شود تا بعد از برگشت از انتخاب فایل از بین نرود */
+function tdInp(id,accept){ let i=document.getElementById(id); if(!i){ i=document.createElement("input"); i.type="file"; i.id=id; i.accept=accept; i.style.display="none"; document.body.appendChild(i); } return i; }
 function tdTile(k,d){ const K=SK[k], L=shOf(k,d); let st=L.length?"ok":"miss", info=L.length?(L.length>1?fa(L.length)+" برگه • ":"")+shSum(L[L.length-1]):"ثبت نشده";
   if(k==="batch"){ const have=L.map(x=>(x.meta.plant||"?")+(x.meta.shift==="شب"?"🌙":"")); const sms=S.opprod.filter(x=>x.date===d&&x.src==="sms"&&+x.volume>0);
     info=L.length?`${have.join(" ")} • ${fa(+sumBy(L.flatMap(x=>x.rows.map(batchRow)),b=>b.m3).toFixed(1))} م³`:(sms.length?`فقط پیامک: ${fa(+sumBy(sms,x=>x.volume).toFixed(1))} م³`:"ثبت نشده");
@@ -3515,7 +3533,7 @@ function vToday(){ const T=tdDay||todayISO(), Y=addDays(T,-1);
       <button class="accentb" data-td="report" data-d="${T}">📊 گزارش تصویری روز</button>
       <button class="accentb" data-td="report" data-d="${Y}">📊 گزارش دیروز</button>
     </div>
-    <input type="file" id="tdFile" accept=".xlsx" hidden><input type="file" id="tdImg" accept="image/*" capture="environment" hidden></div>
+    </div>
   <div class="card"><h3>صبح — کارکرد ${jal(Y)} <span class="m">(گزارش‌های ساعت ۸)</span></h3><div class="tdgrid">${SK_ORDER.filter(k=>SK[k].lag).map(k=>tile(k,Y)).join("")}</div></div>
   <div class="card"><h3>فرم‌های ${jal(T)}</h3><div class="tdgrid">${SK_ORDER.filter(k=>!SK[k].lag&&!SK[k].week&&!["ibatch","saye"].includes(k)).map(k=>tile(k,T)).join("")}</div></div>
   <div class="card"><h3>بازدیدها و مجوزها</h3><div class="tdgrid">${["imix","ipump","ibatch","saye"].map(k=>tile(k,T)).join("")}</div>
@@ -3546,7 +3564,7 @@ function shNew(k,d){ const K=SK[k]; const meta={};
   if(k==="waste") meta.rate=LS.get("wasteRate","")||"";
   const rows=K.fixed?K.fixed():K.prefill?K.prefill():[{}];
   return {id:uid(),kind:k,date:d,meta,rows,src:"manual"}; }
-function shOpen(dr){ shDraft=JSON.parse(JSON.stringify(dr)); shRender(); }
+function shOpen(dr){ shDraft=JSON.parse(JSON.stringify(dr)); shRender(); try{ LS.set("shDraftSave",{at:Date.now(),d:shDraft}); }catch(_){} }
 function shRender(){ const dr=shDraft, K=SK[dr.kind], isNew=!S.sheets.some(x=>x.id===dr.id);
   const rows=dr.rows.map((r,i)=>`<div class="tdrow"><div class="tdrh">${K.rowLabel?esc(K.rowLabel(r)):"ردیف "+fa(i+1)}${K.fixed?"":`<button class="linkbtn" data-td="rdel" data-i="${i}">حذف</button>`}</div>
      <div class="tdcells">${K.cols.map(f=>`<label class="${f.t==="area"?"wide":""}"><span>${f.l}</span>${tdField(`r_${i}_${f.k}`,f,r[f.k])}</label>`).join("")}</div>${shRowWarn(dr.kind,r)}</div>`).join("");
@@ -3936,10 +3954,10 @@ document.addEventListener("click",async e=>{ const b=e.target.closest&&e.target.
   if(a==="fvoice"){ shCollect(); const dr=shDraft; const t=await voiceText();
     if(t===null){ const tx=prompt("گفتار به متن روی این گوشی نیست؛ متن را بنویسید یا با میکروفون کیبورد بگویید:",""); if(!tx) return shRender(); tdMergeVoice(dr,tdVoiceRows(dr.kind,tx,dr)); dr.src=dr.src||"voice"; return shRender(); }
     if(!t) return shRender(); tdMergeVoice(dr,tdVoiceRows(dr.kind,t,dr)); shRender(); return; }
-  if(a==="fphoto"){ if(!LS.get("cfg",{}).url) return alert("خواندن عکس فرم با هوش مصنوعی انجام می‌شود؛ ابتدا در تنظیمات سرور هوش مصنوعی را وصل کنید."); const inp=document.getElementById("tdImg")||(()=>{ const i=document.createElement("input"); i.type="file"; i.accept="image/*"; i.id="tdImg"; i.hidden=true; document.body.appendChild(i); return i; })();
+  if(a==="fphoto"){ if(!LS.get("cfg",{}).url) return alert("خواندن عکس فرم با هوش مصنوعی انجام می‌شود؛ ابتدا در تنظیمات سرور هوش مصنوعی را وصل کنید."); const inp=tdInp("tdImg","image/*");
     if(shDraft) shCollect(); inp.dataset.k=b.dataset.k||(shDraft?shDraft.kind:""); inp.click(); return; }
-  if(a==="photo"){ if(!LS.get("cfg",{}).url) return alert("خواندن عکس فرم با هوش مصنوعی انجام می‌شود؛ ابتدا در تنظیمات سرور هوش مصنوعی را وصل کنید."); shDraft=null; const inp=document.getElementById("tdImg"); inp.dataset.k=""; inp.click(); return; }
-  if(a==="xls"){ document.getElementById("tdFile").click(); return; }
+  if(a==="photo"){ if(!LS.get("cfg",{}).url) return alert("خواندن عکس فرم با هوش مصنوعی انجام می‌شود؛ ابتدا در تنظیمات سرور هوش مصنوعی را وصل کنید."); shDraft=null; const inp=tdInp("tdImg","image/*"); inp.dataset.k=""; inp.click(); return; }
+  if(a==="xls"){ tdInp("tdFile",".xlsx").click(); return; }
   if(a==="xgo"){ await tdXlsCommit(); return; }
   if(a==="voice"){ tdV={text:"",kind:""}; await tdVoiceStart(false); return; }
   if(a==="vmore"){ tdV.text=gv("tdvt"); await tdVoiceStart(true); return; }
@@ -3964,6 +3982,48 @@ function tdToast(t){ let el=document.getElementById("tdToast"); if(!el){ el=docu
   el.textContent=t; el.style.display="block"; clearTimeout(tdToast.tm); tdToast.tm=setTimeout(()=>{ el.style.display="none"; },5200); }
 
 (function(){ const st=document.createElement("style"); st.textContent=DR_CSS; document.head.appendChild(st); })();
+/* ===== اتصال دستگاه‌ها به ردیاب: پلاک عوض‌شده، دستگاه بدون ردیاب ===== */
+const GPS_PLATE_HINT={"728":"199","726":"199","246":"244","596":"185","733":"565","476":"147"};   // پلاک‌های تعویض‌شده‌ی کمپرسی‌ها (جدید ← قدیم روی پنل)
+function gpsMapModal(){ const st=gps.st; if(!st) return alert("هنوز اطلاعات ردیاب نرسیده است.");
+  const D=st.devices.slice().sort((a,b)=>String(a.code).localeCompare(String(b.code)));
+  const M=S.machines.filter(m=>m.status!=="غیرفعال"&&TRIP_TYPES.concat(["کشنده"]).includes(m.type));
+  const owner=c=>gpsMach(c), codes=new Set(D.map(d=>String(d.code)));
+  const lbl=d=>`${d.code} — ${(d.name||"")+(d.plate&&d.plate!==d.name?" "+d.plate:"")}`.trim()+(d.state==="آفلاین"?" (آفلاین)":"");
+  const sugg=m=>{ if(m.gpsCode||m.gpsNone||codes.has(String(m.code||""))) return "";
+    if(/پمپ/.test(m.type)&&/سفید/.test(m.name||"")) return "__none";
+    const old=GPS_PLATE_HINT[String(m.code||"").slice(-3)]; if(!old) return "";
+    const c=D.filter(d=>String(d.code).endsWith(old)&&!owner(d.code)); return c.length===1?String(c[0].code):""; };
+  const tr=S.machines.filter(m=>m.type==="کشنده");
+  const rows=M.map(m=>{ const cur=m.gpsNone?"__none":m.gpsCode?String(m.gpsCode):"", sg=sugg(m), v=cur||sg, found=codes.has(gcode(m))&&!m.gpsNone;
+    return {m,v,sg:!cur&&sg,found}; }).sort((a,b)=>(a.found-b.found)||(b.sg?1:0)-(a.sg?1:0));
+  const free=D.filter(d=>!owner(d.code));
+  showModal(`<div class="tdform"><div class="row" style="justify-content:space-between;align-items:center"><h3 style="margin:0">🔗 اتصال دستگاه‌ها به ردیاب</h3><button class="ghost" data-jdclose="1">✕</button></div>
+   <div class="m">اگر پلاک دستگاهی عوض شده ولی در پنل ردیاب هنوز پلاک قدیمی ثبت است، ردیاب درست را انتخاب کنید. دستگاه‌هایی که ردیاب ندارند (مثل پمپ‌هایی که با کشنده جابه‌جا می‌شوند) را «ردیاب ندارد» بزنید.</div>
+   ${free.length?`<div class="note">ردیاب‌های بی‌صاحب: ${free.map(d=>esc(lbl(d))).join("، ")}</div>`:""}
+   <div class="tdrows">${rows.map(({m,v,sg,found})=>`<div class="tdrow"><div class="tdrh">${esc(m.name)} <span class="tag ${found?"ok":sg?"soon":"due"}">${found?"وصل":sg?"پیشنهاد":"پیدا نشد"}</span></div>
+     <div class="tdcells"><label><span>ردیاب</span><select id="gpe_${m.id}"><option value="">خودکار (کد ${esc(m.code||"—")})</option><option value="__none" ${v==="__none"?"selected":""}>ردیاب ندارد</option>
+       ${D.map(d=>`<option value="${esc(d.code)}" ${String(v)===String(d.code)?"selected":""}>${esc(lbl(d))}${owner(d.code)&&owner(d.code).id!==m.id?" ← "+esc(owner(d.code).name):""}</option>`).join("")}</select></label>
+     ${tr.length&&/پمپ/.test(m.type)?`<label><span>جابه‌جایی با کشنده</span><select id="gpv_${m.id}"><option value="">—</option>${tr.map(t=>`<option value="${t.id}" ${m.gpsVia===t.id?"selected":""}>${esc(t.name)}</option>`).join("")}</select></label>`:""}</div></div>`).join("")}</div>
+   <div class="row" style="margin-top:10px;gap:6px"><button class="primary" id="gpsMapSave">ذخیره</button><button class="ghost" data-jdclose="1">بستن</button></div></div>`);
+  const box=document.querySelector("#modal .jdbox"); if(box) box.classList.add("wide"); }
+async function gpsMapSave(){ let n=0; const used={};
+  for(const m of S.machines){ const el=document.getElementById("gpe_"+m.id); if(!el) continue; const v=el.value, via=(document.getElementById("gpv_"+m.id)||{}).value||"";
+    if(v&&v!=="__none"){ if(used[v]) return alert(`ردیاب ${v} را به دو دستگاه («${used[v]}» و «${m.name}») داده‌اید.`); used[v]=m.name; }
+    const o={gpsCode:v&&v!=="__none"?v:"",gpsNone:v==="__none",gpsVia:v==="__none"?via:""};
+    if((m.gpsCode||"")!==o.gpsCode||!!m.gpsNone!==o.gpsNone||(m.gpsVia||"")!==o.gpsVia){ Object.assign(m,o); n++; } }
+  if(n) await persist("machines"); modalClose(); render(); tdToast(n?fa(n)+" دستگاه به‌روز شد.":"تغییری نبود."); }
+document.addEventListener("click",async e=>{ const b=e.target.closest&&e.target.closest("#gpsMapEd,#gpsMapSave"); if(!b) return;
+  if(b.id==="gpsMapEd") gpsMapModal(); else await gpsMapSave(); });
+
+/* ===== پیش‌نویس فرم‌ها: اگر اندروید اپ را هنگام انتخاب فایل یا گفتار ببندد، فرم از دست نرود ===== */
+let shDraftT=0;
+document.addEventListener("input",e=>{ if(!shDraft||!e.target.closest||!e.target.closest(".tdform")) return; clearTimeout(shDraftT);
+  shDraftT=setTimeout(()=>{ try{ shCollect(); LS.set("shDraftSave",{at:Date.now(),d:shDraft}); }catch(_){} },400); },true);
+const _modalClose=window.modalClose;
+window.modalClose=function(){ try{ LS.set("shDraftSave",null); }catch(_){} return _modalClose.apply(this,arguments); };
+function shDraftRestore(){ const x=LS.get("shDraftSave",null); if(!x||!x.d||!SK[x.d.kind]||Date.now()-x.at>6*3600e3) return;
+  if(!document.getElementById("modal").hidden) return; shOpen(x.d); tdToast("فرم نیمه‌کاره‌ی قبلی باز شد."); }
+
 addEventListener("hashchange",()=>{const h=location.hash.slice(1); if(TABS.some(t=>t[0]===h)&&h!==tab){tab=h;render();}});
 
 render(); load();
@@ -4821,6 +4881,38 @@ render(); load();
   window.__undo = { last: undoLast, stack: stack };
 })();
 
+</script>
+<script>
+/* ===== نگه داشتن فرم‌های نیمه‌کاره هنگام بازسازی صفحه =====
+   پیامک تازه، برگشت از انتخاب فایل یا گفتار، و به‌روزرسانی‌های خودکار صفحه را از نو می‌سازند.
+   مقدار فیلدهایی که کاربر از آخرین زدن دکمه تغییر داده، و خودِ ورودی‌های فایل، حفظ می‌شوند. */
+(function () {
+  "use strict";
+  var dirty = new Set();
+  function mark(e) { var t = e.target; if (t && t.id && t.closest && t.closest("#main")) dirty.add(t.id); }
+  document.addEventListener("input", mark, true);
+  document.addEventListener("change", mark, true);
+  document.addEventListener("click", function (e) { var t = e.target; if (t && t.closest && t.closest("button,a,[data-tab]")) dirty.clear(); }, true);
+  var _r = window.render;
+  window.render = function () {
+    var main = document.getElementById("main"), keep = {}, files = {}, fid = null, sel = null, openD = null, t0 = typeof tab !== "undefined" ? tab : "";
+    if (main) {
+      dirty.forEach(function (id) { var el = document.getElementById(id); if (el && main.contains(el)) keep[id] = el.type === "checkbox" || el.type === "radio" ? { c: el.checked } : { v: el.value }; });
+      Array.prototype.forEach.call(main.querySelectorAll('input[type="file"][id]'), function (el) { files[el.id] = el; });
+      var openD = Array.prototype.filter.call(main.querySelectorAll("details[open]"), function (d) { return !d.closest(".nokeep"); }).map(function (d) { var sm = d.querySelector("summary"); return sm ? sm.textContent.trim().replace(/[\d۰-۹]+/g, "#") : ""; });
+      var a = document.activeElement; if (a && a.id && main.contains(a) && dirty.has(a.id)) { fid = a.id; try { sel = [a.selectionStart, a.selectionEnd]; } catch (e) { } }
+    }
+    var r = _r.apply(this, arguments);
+    if ((typeof tab !== "undefined" ? tab : "") !== t0) { dirty.clear(); return r; }
+    try {
+      if (openD && openD.length) Array.prototype.forEach.call(main.querySelectorAll("details:not([open])"), function (d) { var sm = d.querySelector("summary"); if (sm && openD.indexOf(sm.textContent.trim().replace(/[\d۰-۹]+/g, "#")) >= 0) d.open = true; });
+      Object.keys(files).forEach(function (id) { var n = document.getElementById(id); if (n && n !== files[id] && n.type === "file") n.replaceWith(files[id]); });
+      Object.keys(keep).forEach(function (id) { var n = document.getElementById(id); if (!n) return; if ("c" in keep[id]) n.checked = keep[id].c; else if (n.value !== keep[id].v) n.value = keep[id].v; });
+      if (fid) { var n = document.getElementById(fid); if (n && document.activeElement !== n) { n.focus({ preventScroll: true }); if (sel && n.setSelectionRange && sel[0] != null) try { n.setSelectionRange(sel[0], sel[1]); } catch (e) { } } }
+    } catch (e) { }
+    return r;
+  };
+})();
 </script>
 </body>
 </html>
