@@ -205,9 +205,9 @@ const DUMP=["کمپرسی","کمپرسی تریلی"];
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۲۸ آبان — ۸";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
-const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog"];
-const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[]};
+const APP_BUILD="۲۸ آبان — ۹";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex"];
+const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[]};
 let DB=null, SAMPLE=null, ready=false;
 
 const LS={
@@ -1217,6 +1217,7 @@ async function smsReanalyze(){ let n=0;
     if(K(r)!==K(x)){ await save("sms",Object.assign({},x,r,{noAuto:false})); n++; } }
   const a=await smsAutoRun(); return [n,a]; }
 async function smsRevert(x,col){ col=col||(x.smsId?"smsSeg":"sms");
+  if(x.status==="done"&&x.by!=="user") await lexMiss(x);      // آموخته‌ای که به لغو ثبت رسید، امتیاز منفی می‌گیرد
   for(const [c,id] of [...(x.made||[])].reverse()) if((S[c]||[]).some(r=>r.id===id)) await del(c,id);
   for(const [c,r] of [...(x.rev||[])].reverse()) await save(c,r);
   for(const d of x.days||[]){ const p=S.prod.find(q=>q.date===d); if(p&&p.notes==="از ثبت اوپراتورها"&&!S.opprod.some(o=>o.date===d&&+o.volume>0)&&!S.returns.some(o=>o.date===d)) await del("prod",p.id); else await syncProdDay(d); }
@@ -1283,8 +1284,16 @@ const segConf=(x,t)=>{ let v=x.type==="report"?.3:.6; if(x.machineId) v+=.2; if(
   if(/(?<!\d)\d{3,5}(?!\d)/.test(toEn(t))) v+=.1; return Math.min(.99,+v.toFixed(2)); };
 /* یک قطعه، رکوردی هم‌شکل پیامک است تا همه‌ی مسیرهای ثبت موجود بدون تغییر رویش کار کنند */
 function segRecord(x,g,i){ const c=S.contacts.find(k=>k.id===x.contactId)||contactOf(x.phone);
-  const r=smsRecord(x.id+"#"+i,x.ts,x.phone,g.text,c), kind=segClass(g.text);
-  return Object.assign(r,{smsId:x.id,span:g.span,kind,by:"rule",conf:kind==="rep"?segConf(r,g.text):.95,
+  const r=smsRecord(x.id+"#"+i,x.ts,x.phone,g.text,c); let kind=segClass(g.text), by="rule";
+  let conf=kind==="rep"?segConf(r,g.text):.95;
+  const hit=LS.get("lexOn",true)?lexFind(g.text,x.contactId):null;   // آموخته‌ی اپ بر حدس قاعده‌ها مقدم است
+  if(hit){ by="learn";
+    if(["greet","fix","ask"].includes(hit.type)) kind=hit.type;
+    else if(hit.who===x.contactId||hit.n>=2||r.type==="report"){   // تصحیح خودِ کاربر برای همان فرستنده فوراً اعمال می‌شود
+      kind="rep"; r.type=hit.type; if(hit.type!=="stop"){ r.cause=null; r.fuel=false; } }
+    conf=Math.max(conf,Math.min(.95,.7+.05*Math.min(4,hit.n-hit.miss))); }
+  if(kind==="rep"&&lexFit(x.contactId,r.type,x.time)) conf=Math.min(.95,conf+.05);
+  return Object.assign(r,{smsId:x.id,span:g.span,kind,by,conf,lex:hit?hit.id:"",
     date:x.date,time:x.time,rdate:r.rdate&&r.rdate!==x.date?r.rdate:"",
     state:kind==="greet"?"ignored":"queued",vState:"",status:kind==="greet"?"archived":"new"}); }
 async function segRun(sg,quiet){
@@ -1303,8 +1312,9 @@ async function segRun(sg,quiet){
 async function smsProcess(x,quiet){
   const gs=SEG_ON()?segSplit(x.body):[];
   if(gs.length<2&&segClass(x.body)==="rep"){ const k=smsKind(x);   // تک‌موضوعی: همان مسیر همیشگی
-    if(k){ const ok=await smsConvert(k,x,quiet); if(ok){ try{ await caseTouch(x); await verifRun(x); }catch(e){} } return ok; } }
-  /* موضوع مشخص نشد: به‌جای افتادن در «عمومی»، به صف تأیید می‌رود */
+    if(k){ let ok=false; try{ ok=await smsConvert(k,x,quiet); }catch(e){ ok=false; }
+      if(ok){ try{ await caseTouch(x); await verifRun(x); }catch(e){} return true; } } }
+  /* موضوع مشخص نشد یا ثبت ناقص ماند: به‌جای افتادن در «عمومی»، به صف تأیید می‌رود */
   if(!gs.length) return false;
   for(const old of S.smsSeg.filter(s=>s.smsId===x.id&&s.state!=="done")) await del("smsSeg",old.id);
   let n=0,q=0,g0=0;
@@ -1375,7 +1385,7 @@ async function aiExtract(manual){
 هر پیامک را به قطعه‌های معنایی بشکن و فقط یک آرایه JSON برگردان، بدون هیچ متن دیگر.
 قالب: [{"id":"همان شناسه","segments":[{"text":"عین همان تکه از متن اصلی، بدون تغییر","kind":"نوع","machine":"سه یا پنج رقم پلاک اگر در همان تکه آمده وگرنه null","conf":عدد بین ۰ و ۱}]}]
 نوع یکی از این‌هاست: greet (سلام و تعارف و تشکر)، ask (درخواست شخصی مثل حقوق و مساعده)، fix (اصلاح یا لغو گزارش قبلی)، fuel (سوخت‌گیری)، fault (خرابی)، stop (توقف یا معطلی بدون خرابی)، incident (تصادف یا ایمنی)، batch (گزارش تولید بچینگ)، ready (آماده‌به‌کار شدن یا برگشتن به خط)، service (سرویس انجام‌شده)، svcdue (اعلام موعد سرویس)، att (مرخصی یا غیبت)، need (نیاز به قطعه)، wash (کارواش)، trip (تعداد سرویس حمل)، job (کار محوطه)، report (بقیه).
-قاعده‌ها: متن هر قطعه باید عیناً بخشی از پیام اصلی باشد و حق نداری کلمه‌ای اضافه یا کم کنی. هیچ عدد تازه‌ای نساز. اگر شک داری conf را زیر ۰٫۶ بگذار و نوع را report بنویس. «از خط خارج» یعنی fault و «اومد تو خط» یعنی ready.
+${aiHints(L)}قاعده‌ها: متن هر قطعه باید عیناً بخشی از پیام اصلی باشد و حق نداری کلمه‌ای اضافه یا کم کنی. هیچ عدد تازه‌ای نساز. اگر شک داری conf را زیر ۰٫۶ بگذار و نوع را report بنویس. «از خط خارج» یعنی fault و «اومد تو خط» یعنی ready.
 پیام‌ها: ${JSON.stringify(L.map(x=>({id:x.id,role:(S.contacts.find(c=>c.id===x.contactId)||{}).role||"",text:x.body})))}`;
   const t0=Date.now(); let arr=null, txt="";
   try{ txt=await callClaude(prompt); const a=txt.indexOf("["), b=txt.lastIndexOf("]"); arr=JSON.parse(txt.slice(a,b+1));
@@ -1429,11 +1439,68 @@ function pledger(from,to){ const by={};
   for(const s of S.smsSeg) if(inR(s.date,from,to)){ add(s.contactId,s.kind==="rep"?"rep":s.kind==="greet"?"greet":s.kind==="fix"?"fix":"rep");
     const o=by[s.contactId]; if(!o) continue; if(s.state==="queued") o.q++; if(s.vState==="flag") o.flag++; }
   return Object.values(by).map(o=>Object.assign(o,{name:(S.contacts.find(c=>c.id===o.id)||{}).name||"ناشناس"})).sort((a,b)=>b.n-a.n); }
+/* ===================== حافظه‌ی آموخته‌ی اپ =====================
+   اپ فقط از چیزی یاد می‌گیرد که خودِ کاربر تأیید یا اصلاح کرده باشد.
+   هر الگو شمارش تأیید (n) و شمارش اشتباه (miss) دارد؛ الگویی که بیشتر اشتباه
+   درآمده باشد خودکار خاموش می‌شود. هیچ چیزی از متن حدس‌زده‌ی دستیار یاد گرفته نمی‌شود. */
+const LEX_STOP=new Set(["و","به","از","با","در","که","را","رو","این","اون","آن","برای","تا","شد","شده","بود","هست","است","می","کرد","کردم","کنید","کن","لطفا","سلام","ممنون","یه","یک","هم","ها","های","خیلی","الان","امروز","دیروز","فردا","ساعت","مورخه","تاریخ","دارم","دارد","داره","بهتر","خوب"]);
+const lexNorm=s=>toEn(String(s||"")).replace(/ي/g,"ی").replace(/ك/g,"ک").replace(/[ـ‌]/g," ").replace(/[^؀-ۿa-zA-Z\s]/g," ").replace(/\s+/g," ").trim();
+const lexWords=t=>[...new Set(lexNorm(t).split(" ").filter(w=>w.length>2&&!LEX_STOP.has(w)))];
+const lexKeys=t=>lexWords(t).sort((a,b)=>b.length-a.length).slice(0,3).sort().join(" ");
+const lexName=v=>SMS_T[v]||SEG_L[v]||v;
+function lexFind(text,who){ const w=new Set(lexNorm(text).split(" ").filter(Boolean));
+  return S.lex.filter(r=>!r.off&&r.scope==="sms"&&(r.who===who||r.who==="*")&&(+r.n||0)>(+r.miss||0)&&r.pat&&r.pat.split(" ").every(t=>w.has(t)))
+    .sort((a,b)=>(b.who===who)-(a.who===who)||(b.n-b.miss)-(a.n-a.miss))[0]||null; }
+async function lexTrim(){ const MAX=400; if(S.lex.length<=MAX) return;
+  for(const r of [...S.lex].sort((a,b)=>((a.n-a.miss)-(b.n-b.miss))||a.at-b.at).slice(0,S.lex.length-MAX)) await del("lex",r.id); }
+async function lexLearn(s,val){ if(!s||!val||!LS.get("lexOn",true)) return; const pat=lexKeys(s.body);
+  if(!pat||pat.split(" ").length<2) return;                       // الگوی تک‌واژه‌ای زیادی کلی است
+  const who=s.contactId||"*", ex=S.lex.find(r=>r.scope==="sms"&&r.who===who&&r.pat===pat);
+  if(ex) await save("lex",Object.assign({},ex,{type:val,n:(+ex.n||0)+1,at:Date.now(),off:false}));
+  else { await save("lex",{id:uid(),scope:"sms",who,pat,type:val,n:1,miss:0,at:Date.now(),by:"user"}); await lexTrim(); } }
+async function lexMiss(s){ if(!s) return; const pat=lexKeys(s.body||""), who=s.contactId||"*";
+  const ex=S.lex.find(r=>r.scope==="sms"&&(r.who===who||r.who==="*")&&r.pat===pat); if(!ex) return;
+  const miss=(+ex.miss||0)+1; await save("lex",Object.assign({},ex,{miss,off:miss>=(+ex.n||0)})); }
+/* ساعت معمول هر نوع گزارش برای هر نفر — از روی قطعه‌های ثبت‌شده، بدون ذخیره‌ی جداگانه */
+function lexHours(who){ const by={};
+  for(const s of S.smsSeg) if(s.contactId===who&&s.state==="done"&&s.time){ const h=+toEn(s.time).slice(0,2); if(h>=0&&h<24) (by[s.type]=by[s.type]||[]).push(h); }
+  return Object.entries(by).map(([k,v])=>({type:k,n:v.length,h:Math.round(avg(v))})).filter(o=>o.n>=3).sort((a,b)=>b.n-a.n).slice(0,4); }
+const lexFit=(who,type,time)=>{ const o=lexHours(who).find(q=>q.type===type), h=+toEn(time||"99").slice(0,2); return !!(o&&Math.abs(o.h-h)<=2); };
+/* آموخته‌ها به‌صورت متن فشرده به دستیار داده می‌شوند */
+function aiHints(L){ const out=[];
+  for(const id of [...new Set(L.map(x=>x.contactId).filter(Boolean))]){ const c=S.contacts.find(k=>k.id===id); if(!c) continue;
+    const pats=S.lex.filter(r=>r.scope==="sms"&&r.who===id&&!r.off&&r.n>r.miss).sort((a,b)=>b.n-a.n).slice(0,6), hrs=lexHours(id), bits=[];
+    if(c.machineId) bits.push("دستگاهش "+mName(c.machineId));
+    if(hrs.length) bits.push("معمولاً "+hrs.map(o=>`${lexName(o.type)} حدود ساعت ${fa(o.h)}`).join("، "));
+    if(pats.length) bits.push("از تأییدهای قبلی: "+pats.map(r=>`«${r.pat}» ⟵ ${lexName(r.type)}`).join("، "));
+    if(c.aiNote) bits.push("نکته‌ی سرپرست: "+c.aiNote);
+    if(bits.length) out.push(`- ${c.name} (${roleOf(c)}): ${bits.join(" • ")}`); }
+  const gen=S.lex.filter(r=>r.scope==="sms"&&r.who==="*"&&!r.off&&r.n>r.miss).sort((a,b)=>b.n-a.n).slice(0,8);
+  if(gen.length) out.push("- عمومی: "+gen.map(r=>`«${r.pat}» ⟵ ${lexName(r.type)}`).join("، "));
+  return out.length?`\nآموخته‌های این کارخانه (همه از تأیید خودِ سرپرست، نه حدس):\n${out.join("\n")}\nاگر متن تازه با این الگوها خواند همان نوع را بده، مگر خود متن صریحاً چیز دیگری بگوید. این آموخته‌ها اجازه نمی‌دهند عددی بسازی.\n`:""; }
+function vLex(){ const L=S.lex.filter(r=>r.scope==="sms"), on=L.filter(r=>!r.off);
+  const grp={}; for(const r of L) (grp[r.who]=grp[r.who]||[]).push(r);
+  const who=Object.keys(grp).sort((a,b)=>grp[b].length-grp[a].length);
+  const C=S.contacts.filter(c=>c.active!==false);
+  return `<div class="card"><h3>حافظه‌ی آموخته‌ی اپ${L.length?`<span class="tag ok">${fa(on.length)} الگو</span>`:""}</h3>
+   <label style="display:flex;gap:8px;align-items:center"><input id="lexOn" type="checkbox" style="width:auto" ${LS.get("lexOn",true)?"checked":""}> یاد گرفتن از تأییدها و اصلاح‌های من</label>
+   <div class="note" style="margin-top:6px">هر بار یک قطعه را خودت ثبت یا اصلاح کنی، اپ واژه‌های متمایز آن را به نام همان فرستنده نگه می‌دارد و دفعه‌ی بعد بدون اینترنت هم همان را تشخیص می‌دهد. الگویی که بیشتر از تعداد تأییدش «لغو ثبت» بخورد خودکار خاموش می‌شود.</div>
+   ${L.length?who.map(w=>{const c=S.contacts.find(k=>k.id===w), hrs=w==="*"?[]:lexHours(w);
+     return `<details style="margin-top:8px"><summary><b>${esc(c?c.name:"عمومی")}</b> (${fa(grp[w].length)})</summary>
+      ${hrs.length?`<div class="m">ساعت معمول: ${hrs.map(o=>`${lexName(o.type)} ~ ${faNum(String(o.h).padStart(2,"0")+":۰۰")}`).join(" • ")}</div>`:""}
+      ${grp[w].sort((a,b)=>b.n-a.n).map(r=>`<div class="item"><div class="t">«${esc(r.pat)}» ⟵ ${lexName(r.type)}${r.off?'<span class="tag">خاموش</span>':`<span class="tag ok">${fa(r.n)} تأیید</span>`}${r.miss?`<span class="tag due">${fa(r.miss)} اشتباه</span>`:""}</div>
+       <div class="row" style="margin-top:5px"><button class="ghost" data-lexoff="${r.id}">${r.off?"روشن کن":"خاموش کن"}</button><button class="danger" data-lexdel="${r.id}">حذف</button></div></div>`).join("")}</details>`;}).join("")
+    :'<div class="empty">هنوز چیزی یاد نگرفته. از صف تأیید که استفاده کنی، همین‌جا پر می‌شود.</div>'}
+   ${C.length?`<details style="margin-top:8px"><summary>نکته‌ی دستی برای هر نفر (به دستیار داده می‌شود)</summary>
+    <label>نفر</label><select id="noteWho">${C.map(c=>`<option value="${c.id}" ${(S.contacts.find(k=>k.aiNote)||{}).id===c.id?"selected":""}>${esc(c.name)}</option>`).join("")}</select>
+    <label>نکته</label><textarea id="noteTxt" rows="2" placeholder="مثلاً: همیشه اول تناژ را می‌نویسد و بعد متراژ — یا — عدد ۷ را شبیه ۱ می‌نویسد"></textarea>
+    <div class="row" style="margin-top:8px"><button class="primary" id="saveNote">ذخیره نکته</button></div>
+    ${S.contacts.filter(c=>c.aiNote).map(c=>`<div class="m">• ${esc(c.name)}: ${esc(c.aiNote)}</div>`).join("")}</details>`:""}</div>`; }
 /* ---------- نمایش قطعه‌ها، صف تأیید و پرونده‌ها ---------- */
 const VER_T={ok:'<span class="tag ok">تأیید GPS</span>',flag:'<span class="tag due">مغایرت GPS</span>',none:'<span class="tag">غیرقابل‌بررسی</span>'};
 function segLine(s){ const v=verOf(s.id);
   return `<div class="item" style="margin-inline-start:10px">
-   <div class="t">${SEG_L[s.kind]||s.kind}${s.kind==="rep"?` • ${SMS_T[s.type]||s.type}`:""}<span class="tag ${s.state==="done"?"ok":s.state==="queued"?"soon":""}">${SEG_ST[s.state]||s.state}</span>${s.by==="ai"?'<span class="tag">دستیار</span>':""}<span class="tag">اطمینان ${fa(Math.round(s.conf*100))}٪</span>${s.vState?VER_T[s.vState]:""}</div>
+   <div class="t">${SEG_L[s.kind]||s.kind}${s.kind==="rep"?` • ${SMS_T[s.type]||s.type}`:""}<span class="tag ${s.state==="done"?"ok":s.state==="queued"?"soon":""}">${SEG_ST[s.state]||s.state}</span>${s.by==="ai"?'<span class="tag">دستیار</span>':s.by==="learn"?'<span class="tag ok">از آموخته‌ها</span>':""}<span class="tag">اطمینان ${fa(Math.round(s.conf*100))}٪</span>${s.vState?VER_T[s.vState]:""}</div>
    <div style="white-space:pre-wrap;font-size:13px;margin:3px 0">${esc(s.body)}</div>
    ${s.machineId?`<div class="m">${esc(mName(s.machineId))}${s.minutes?` • ${fa(s.minutes)} دقیقه`:""}${s.liters?` • ${fa(s.liters)} لیتر`:""}${s.fromT?` • ${faNum(s.fromT)}`:""}</div>`:""}
    ${s.autoNote?`<div class="note" style="margin:3px 0">${esc(s.autoNote)}</div>`:""}
@@ -1571,6 +1638,7 @@ function vSms(){const P=SMSP(), t=todayISO(), a=smsAgg(addDays(t,-29),t), tot=su
    <div class="chips">${[["new",`جدید ${fa(nNew)}`],["all","همه"],...Object.keys(SMS_T).filter(k=>k==="report"||S.sms.some(x=>x.type===k)).map(k=>[k,SMS_T[k]])].map(([k,n])=>`<button class="chip ${smsF===k?"on":""}" data-smsf="${k}">${n}</button>`).join("")}</div>
    <div class="row" style="margin:6px 0"><button class="ghost" id="smsRe">تحلیل دوباره‌ی پیام‌های جدید</button><button class="ghost" id="smsMerge">ادغام پیام‌های تیک‌خورده</button></div>
    ${list.length?list.map(smsItem).join(""):'<div class="empty">پیامی در این دسته نیست.</div>'}</div>
+  ${vLex()}
   ${vPledger()}
   ${a.drivers.length?`<div class="card"><h3>گزارش ۳۰ روز به تفکیک فرستنده</h3><div class="scrollx"><table><tr><th>فرستنده</th><th>پیام</th><th>خرابی</th><th>توقف (دقیقه)</th><th>حادثه</th></tr>
    ${a.drivers.map(o=>`<tr><td>${esc(o.d)}</td><td>${fa(o.n)}</td><td>${fa(o.f)}</td><td>${fa(o.st)}</td><td>${fa(o.inc)}</td></tr>`).join("")}</table></div></div>`:""}
@@ -3334,7 +3402,8 @@ document.addEventListener("click",async e=>{
   if(b.id==="smsSync"){ b.disabled=true; await syncSms(true); b.disabled=false; return; }
   if(b.id==="smsSync30"){ b.disabled=true; await syncSms(true,30); b.disabled=false; return; }
   if(b.dataset.smsf){ smsF=b.dataset.smsf; render(); return; }
-  if(b.dataset.sms2){ const x=S.sms.find(y=>y.id===b.dataset.sid); if(x) await smsConvert(b.dataset.sms2,x); return; }
+  if(b.dataset.sms2){ const x=S.sms.find(y=>y.id===b.dataset.sid); if(!x) return;
+    if(await smsConvert(b.dataset.sms2,x)&&b.dataset.sms2!=="ok") await lexLearn(x,x.type); return; }
   if(b.dataset.smsrev){ const x=S.sms.find(y=>y.id===b.dataset.smsrev); if(!x) return; if(x.status==="done"&&!confirm("ثبتِ این پیام لغو و رکوردهای ساخته‌شده از آن حذف شود؟")) return; await smsRevert(x); return; }
   if(b.dataset.smsdel){ const x=S.sms.find(y=>y.id===b.dataset.smsdel); if(!x) return;
     if(!confirm(x.status==="done"&&(x.made||[]).length?"پیام حذف شود؟ رکوردهایی که از آن ثبت شده سر جایشان می‌مانند (برای حذف آن‌ها اول «لغو ثبت» را بزن).":"این پیام حذف شود؟")) return;
@@ -3345,8 +3414,14 @@ document.addEventListener("click",async e=>{
   if(b.dataset.segrun){ const x=S.sms.find(y=>y.id===b.dataset.segrun); if(!x) return; b.disabled=true; await smsProcess(x,false); render(); return; }
   if(b.dataset.segok){ const s=S.smsSeg.find(y=>y.id===b.dataset.segok); if(!s) return; const k=smsKind(s); if(!k) return alert("نوع این قطعه مشخص نیست؛ اول نوعش را انتخاب کن.");
     const ok=await smsConvert(k,s,false,"smsSeg");
-    if(ok){ const cur=S.smsSeg.find(y=>y.id===s.id)||s; await save("smsSeg",Object.assign({},cur,{state:"done",by:"user"})); await caseTouch(cur); await verifRun(cur); } return; }
-  if(b.dataset.segign){ const s=S.smsSeg.find(y=>y.id===b.dataset.segign); if(s) await save("smsSeg",Object.assign({},s,{state:"ignored",status:"archived"})); return; }
+    if(ok){ const cur=S.smsSeg.find(y=>y.id===s.id)||s; await save("smsSeg",Object.assign({},cur,{state:"done",by:"user"}));
+      await lexLearn(cur,cur.type); await caseTouch(cur); await verifRun(cur); } return; }
+  if(b.dataset.segign){ const s=S.smsSeg.find(y=>y.id===b.dataset.segign); if(!s) return;
+    await save("smsSeg",Object.assign({},s,{state:"ignored",status:"archived"})); if(s.kind==="rep") await lexLearn(s,"greet"); return; }
+  if(b.dataset.lexdel){ if(confirm("این الگوی آموخته حذف شود؟")) await del("lex",b.dataset.lexdel); return; }
+  if(b.dataset.lexoff){ const r=S.lex.find(y=>y.id===b.dataset.lexoff); if(r) await save("lex",Object.assign({},r,{off:!r.off,miss:r.off?0:r.miss})); return; }
+  if(b.id==="saveNote"){ const c=S.contacts.find(k=>k.id===gv("noteWho")); if(!c) return;
+    await save("contacts",Object.assign({},c,{aiNote:(document.getElementById("noteTxt")||{}).value.trim()})); alert("ذخیره شد."); return; }
   if(b.dataset.segrev){ const s=S.smsSeg.find(y=>y.id===b.dataset.segrev)||S.sms.find(y=>y.id===b.dataset.segrev); if(!s) return;
     if(!confirm("ثبتِ این مورد لغو و رکوردهای ساخته‌شده از آن حذف شود؟")) return; await smsRevert(s); return; }
   if(b.dataset.segver){ const s=S.smsSeg.find(y=>y.id===b.dataset.segver); if(!s) return; b.disabled=true; await verifRun(s); render(); return; }
@@ -3511,6 +3586,8 @@ document.addEventListener("change",async e=>{const el=e.target;
   if(el&&el.id==="smsNotify"){ LS.set("smsNotify",el.checked); pushWatch(); }
   if(el&&el.id==="smsAuto") LS.set("smsAuto",el.checked);
   if(el&&el.id==="segOn"){ LS.set("segOn",el.checked); render(); return; }
+  if(el&&el.id==="lexOn"){ LS.set("lexOn",el.checked); render(); return; }
+  if(el&&el.id==="noteWho"){ const c=S.contacts.find(k=>k.id===el.value), t=document.getElementById("noteTxt"); if(c&&t) t.value=c.aiNote||""; return; }
   const gid2=el&&el.dataset&&(el.dataset.segt||el.dataset.segmc);
   if(gid2){ const s=S.smsSeg.find(y=>y.id===gid2); if(!s) return; const u={edited:true,by:"user",conf:Math.max(s.conf,.9)};
     if(el.dataset.segt){ u.type=el.value; if(el.value!=="stop") u.cause=null; }
@@ -5092,7 +5169,7 @@ render(); load();
     parts: "قطعه", returns: "بتن برگشتی", silos: "شمارش سیلو", counts: "شمارش مواد", receipts: "ورود مصالح", scores: "کسری کارکرد", norms: "نُرم", pumpjobs: "پمپاژ",
     att: "حضور و غیاب", washes: "شستشو", jobs: "کار محوطه", tasks: "کار", incidents: "حادثه", stops: "توقف تولید", log: "سابقه‌ی دستگاه", notes: "یادداشت", ideas: "ایده",
     check: "مورد چک‌لیست", ticks: "تیک چک‌لیست", rem: "یادآوری", tires: "لاستیک", mixes: "طرح اختلاط", batches: "بچ", calib: "کالیبراسیون", reports: "گزارش", looks: "بازدید ظاهری",
-    smsSeg: "قطعه‌ی پیامک", cases: "پرونده‌ی توقف", verif: "تطبیق GPS", aiLog: "سابقه‌ی دستیار" };
+    smsSeg: "قطعه‌ی پیامک", cases: "پرونده‌ی توقف", verif: "تطبیق GPS", aiLog: "سابقه‌ی دستیار", lex: "الگوی آموخته" };
   var snap = {}, stack = [], gid = 0, undoing = false, tm = 0, MAXG = 40;
   function strip(r) { var o = Object.assign({}, r); delete o.u; return JSON.stringify(o); }
   function resnap(col) { var m = {}, a = S[col] || [], i; for (i = 0; i < a.length; i++) if (a[i] && a[i].id != null) m[a[i].id] = strip(a[i]); snap[col] = m; }
