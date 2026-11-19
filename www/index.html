@@ -205,9 +205,9 @@ const DUMP=["کمپرسی","کمپرسی تریلی"];
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۲۴ آبان — ۷";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
-const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos"];
-const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[]};
+const APP_BUILD="۲۸ آبان — ۸";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog"];
+const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[]};
 let DB=null, SAMPLE=null, ready=false;
 
 const LS={
@@ -1209,17 +1209,23 @@ const smsKind=x=>x.type==="batch"?"batch":x.cause==="سوخت‌گیری"?"fuel"
 /* پیام‌های جدید را خودکار به گزارش تبدیل می‌کند؛ هر کدام با «لغو ثبت» برمی‌گردد */
 async function smsAutoRun(ids){ if(!LS.get("smsAuto",true)) return 0; let n=0;
   const L=S.sms.filter(x=>x.status==="new"&&!x.noAuto&&x.contactId&&(!ids||ids.includes(x.id))).sort((a,b)=>a.ts-b.ts);
-  for(const x of L){ const k=smsKind(x); if(!k) continue; try{ if(await smsConvert(k,x,true)) n++; }catch(e){} }
+  for(const x of L){ try{ if(await smsProcess(x,true)) n++; }catch(e){} }
   return n; }
 async function smsReanalyze(){ let n=0;
   for(const x of S.sms.filter(y=>y.status==="new"&&!y.edited)){ const c=S.contacts.find(k=>k.id===x.contactId)||contactOf(x.phone), r=smsRecord(x.id,x.ts,x.phone,x.body,c);
     const K=q=>JSON.stringify([q.type,q.machineId,q.contactId,q.cause,q.minutes,q.liters,q.cost,q.station,q.fromT,q.toT,q.rdate,q.n,q.km,!!q.sleep]);
     if(K(r)!==K(x)){ await save("sms",Object.assign({},x,r,{noAuto:false})); n++; } }
   const a=await smsAutoRun(); return [n,a]; }
-async function smsRevert(x){ for(const [c,id] of [...(x.made||[])].reverse()) if((S[c]||[]).some(r=>r.id===id)) await del(c,id);
+async function smsRevert(x,col){ col=col||(x.smsId?"smsSeg":"sms");
+  for(const [c,id] of [...(x.made||[])].reverse()) if((S[c]||[]).some(r=>r.id===id)) await del(c,id);
   for(const [c,r] of [...(x.rev||[])].reverse()) await save(c,r);
   for(const d of x.days||[]){ const p=S.prod.find(q=>q.date===d); if(p&&p.notes==="از ثبت اوپراتورها"&&!S.opprod.some(o=>o.date===d&&+o.volume>0)&&!S.returns.some(o=>o.date===d)) await del("prod",p.id); else await syncProdDay(d); }
-  await save("sms",Object.assign({},S.sms.find(y=>y.id===x.id)||x,{status:"new",made:[],rev:[],days:[],autoNote:"",linked:"",noAuto:true})); }
+  for(const v of S.verif.filter(v=>v.recId===x.id)) await del("verif",v.id);
+  for(const c of S.cases.filter(c=>(c.events||[]).some(e=>e.seg===x.id))){
+    const ev=(c.events||[]).filter(e=>e.seg!==x.id);
+    if(!ev.length) await del("cases",c.id);
+    else await save("cases",Object.assign({},c,{events:ev,state:ev.some(e=>e.kind==="ready")?c.state:"open",closedAt:ev.some(e=>e.kind==="ready")?c.closedAt:0})); }
+  await save(col,Object.assign({},(S[col]||[]).find(y=>y.id===x.id)||x,{status:"new",state:col==="smsSeg"?"queued":undefined,vState:"",made:[],rev:[],days:[],autoNote:"",linked:"",noAuto:true})); }
 async function syncSms(manual,backDays){const P=SMSP();
   if(!P){ if(manual) alert("خواندن پیامک فقط در نسخه نصبی اندروید کار می‌کند."); return; }
   if(!S.contacts.length){ if(manual) alert("ابتدا شماره رانندگان را در پایین همین صفحه ثبت کن."); return; }
@@ -1231,7 +1237,8 @@ async function syncSms(manual,backDays){const P=SMSP();
     const r=await P.readInbox({since}), msgs=(r&&r.messages)||[]; let n=0, maxTs=LS.get("smsSince",0)||0;
     for(const m of msgs){ maxTs=Math.max(maxTs,+m.date); const id="sms"+m.id; if(S.sms.some(x=>x.id===id)) continue; S.sms.push(smsRecord(id,m.date,m.phone||m.address,m.body||"")); n++; }
     LS.set("smsSince",Math.max(maxTs,LS.get("smsSince",0)||0)||Date.now()); LS.set("smsLast",Date.now());
-    let au=0; if(n){ await persist("sms"); render(); if(LS.get("smsAi",true)) await aiClassify(); au=await smsAutoRun(); } else if(manual) render();
+    let au=0; if(n){ await persist("sms"); render(); au=await smsAutoRun();
+      if(LS.get("smsAi",true)&&AI_ON()){ await aiClassify(); au+=await aiExtract(false); } } else if(manual) render();
     if(manual) alert(n?`${fa(n)} پیام جدید وارد شد${au?" و "+fa(au)+" گزارش خودکار ثبت شد":""}.`:"پیام جدیدی نیست.");
   }catch(e){ if(manual) alert("خواندن پیامک ناموفق بود: "+(e.message||e)); } finally{ smsBusy=false; } }
 async function aiClassify(){const cfg=LS.get("cfg",{}); if(!cfg.url||!cfg.token) return; const todo=S.sms.filter(x=>!x.ai&&!x.edited&&x.type==="report"&&x.status==="new").slice(-40); if(!todo.length) return;
@@ -1244,6 +1251,234 @@ fault یعنی خرابی دستگاه (حتی اگر مدت توقف هم گف�
       S.sms[i]=Object.assign({},x,{ai:true,type:SMS_T[r.type]?r.type:x.type,minutes:r.minutes!=null&&!isNaN(+r.minutes)?+r.minutes:x.minutes,
         cause:FSTOP.includes(r.cause)?r.cause:(r.type==="fault"?"خرابی":x.cause),title:r.title||x.title||"",summary:r.summary||""}); }
     await persist("sms"); render(); }catch(e){} }
+
+/* ===================== تحلیل حرفه‌ای پیامک: قطعه‌بندی، پرونده، تطبیق GPS ===================== */
+/* هر پیامک به چند «قطعه» شکسته می‌شود؛ تعارف و اصلاح و درخواست شخصی از محتوای گزارش جدا می‌شوند.
+   متن خام پیامک هیچ‌وقت عوض نمی‌شود و هر رکورد با smsId و segId به همان تکه‌ی متن برمی‌گردد.
+   عددها همیشه از همان قاعده‌های موجود (smsAnalyze) روی متن واقعی درمی‌آیند، نه از هوش مصنوعی. */
+const SEG_ON=()=>LS.get("segOn",true);
+const confMin=()=>+LS.get("segConf",60)/100;
+const verTol=()=>+LS.get("verTol",30)*60000;
+const SEG_L={rep:"گزارش",greet:"تعارف",fix:"اصلاح",ask:"درخواست شخصی"};
+const SEG_ST={ready:"آماده ثبت",queued:"صف تأیید",done:"ثبت شد",ignored:"بی‌اثر"};
+const RE_GREET=/^[\s،,.:!ـ]*(?:(?:(?:با\s*)?سلام(?:\s*علیکم)?|درود|عرض\s*ادب|خسته\s*نباشید|خدا\s*?قوت|ممنون(?:م)?|متشکرم|تشکر|سپاس|ارادت|قربان\s*شما|چاکرم|شب\s*(?:خوش|بخیر)|(?:صبح|ظهر|عصر|روز|وقت)\s*بخیر|ان\s*شا\s*الله|انشالله|خدمت\s*شما|جناب|مهندس|سرکار)[\s،,.!:ـ]*(?:و\s*)?)+$/;
+const RE_FIX=/اشتباه\s*(?:شد|نوشتم|زدم|بود|فرستادم)|ببخشید\s|اصلاح\s*(?:می|کن|شود)|درستش|به\s*جای\s|بجای\s|لغو\s*کن|پیام\s*(?:قبل|قبلی)|قبلی\s*(?:رو|را)\s*(?:حذف|نادیده)/;
+const RE_ASK=/حقوق|مساعده|کارت\s*سوخت(?!\s*گیری)|بیمه|قسط|وام|مرخصی\s*بدید|لطفا?\s*(?:برام|برای من)|درخواست\s*دارم|خواهشمند/;
+/* شکستن متن: خط جدید، نقطه، و واژه‌های شروع موضوع تازه (طول متن دست نمی‌خورد تا نشانی قطعه‌ها درست بماند) */
+function segSplit(body){ const s=String(body||"").replace(/[ \t](?=(?:ضمن[اًا]|راستی|همچنین|پ\.?ن)[\s،:])/g,"\n");
+  const parts=[], re=/\n+|[.؛!؟]+[ \t]*/g; let last=0,m;
+  while((m=re.exec(s))){ if(s.slice(last,m.index).trim()) parts.push([last,m.index]); last=re.lastIndex; }
+  if(s.slice(last).trim()) parts.push([last,s.length]);
+  const out=[];
+  for(const p of parts){ const t=s.slice(p[0],p[1]).trim();
+    if(out.length&&t.length<14&&!RE_GREET.test(t)&&!/\d/.test(t)){ out[out.length-1][1]=p[1]; continue; }
+    out.push(p); }
+  return out.map(p=>({span:[p[0],p[1]],text:String(body||"").slice(p[0],p[1]).trim()})).filter(g=>g.text); }
+function segClass(text){ const t=toEn(text||"").replace(/ي/g,"ی").replace(/ك/g,"ک");
+  if(RE_GREET.test(t.trim())) return "greet";
+  if(RE_FIX.test(t)) return "fix";
+  if(RE_ASK.test(t)&&!/خراب|پنچر|توقف|سوخت\s*گیری|لیتر|متراژ|تناژ/.test(t)) return "ask";
+  return "rep"; }
+const segConf=(x,t)=>{ let v=x.type==="report"?.3:.6; if(x.machineId) v+=.2; if(x.minutes||x.liters||x.n||x.km||x.cost) v+=.1;
+  if(/(?<!\d)\d{3,5}(?!\d)/.test(toEn(t))) v+=.1; return Math.min(.99,+v.toFixed(2)); };
+/* یک قطعه، رکوردی هم‌شکل پیامک است تا همه‌ی مسیرهای ثبت موجود بدون تغییر رویش کار کنند */
+function segRecord(x,g,i){ const c=S.contacts.find(k=>k.id===x.contactId)||contactOf(x.phone);
+  const r=smsRecord(x.id+"#"+i,x.ts,x.phone,g.text,c), kind=segClass(g.text);
+  return Object.assign(r,{smsId:x.id,span:g.span,kind,by:"rule",conf:kind==="rep"?segConf(r,g.text):.95,
+    date:x.date,time:x.time,rdate:r.rdate&&r.rdate!==x.date?r.rdate:"",
+    state:kind==="greet"?"ignored":"queued",vState:"",status:kind==="greet"?"archived":"new"}); }
+async function segRun(sg,quiet){
+  const park=async st=>{ await save("smsSeg",Object.assign({},sg,{state:st})); return false; };
+  if(sg.kind==="greet"){ await save("smsSeg",Object.assign({},sg,{state:"ignored",status:"archived"})); return false; }
+  if(sg.kind!=="rep") return park("queued");
+  if(sg.conf<confMin()) return park("queued");
+  const k=smsKind(sg); if(!k) return park("queued");
+  await save("smsSeg",Object.assign({},sg,{state:"ready"}));
+  let ok=false; try{ ok=await smsConvert(k,sg,true,"smsSeg"); }catch(e){ ok=false; }
+  if(!ok){ const cur=S.smsSeg.find(y=>y.id===sg.id)||sg; await save("smsSeg",Object.assign({},cur,{state:"queued"})); return false; }
+  const cur=S.smsSeg.find(y=>y.id===sg.id)||sg; await save("smsSeg",Object.assign({},cur,{state:"done"}));
+  try{ await caseTouch(cur); await verifRun(cur); }catch(e){}
+  return true; }
+/* پردازش یک پیامک: تک‌موضوعی مثل قبل، چندموضوعی از راه قطعه‌ها */
+async function smsProcess(x,quiet){
+  const gs=SEG_ON()?segSplit(x.body):[];
+  if(gs.length<2&&segClass(x.body)==="rep"){ const k=smsKind(x);   // تک‌موضوعی: همان مسیر همیشگی
+    if(k){ const ok=await smsConvert(k,x,quiet); if(ok){ try{ await caseTouch(x); await verifRun(x); }catch(e){} } return ok; } }
+  /* موضوع مشخص نشد: به‌جای افتادن در «عمومی»، به صف تأیید می‌رود */
+  if(!gs.length) return false;
+  for(const old of S.smsSeg.filter(s=>s.smsId===x.id&&s.state!=="done")) await del("smsSeg",old.id);
+  let n=0,q=0,g0=0;
+  for(let i=0;i<gs.length;i++){ const sg=segRecord(x,gs[i],i);
+    if(S.smsSeg.some(s=>s.smsId===x.id&&s.state==="done"&&s.body===sg.body)) continue;
+    if(await segRun(sg,quiet)) n++; else if(sg.kind==="greet") g0++; else q++; }
+  const cur=S.sms.find(y=>y.id===x.id)||x;
+  await save("sms",Object.assign({},cur,{segs:gs.length,status:n&&!q?"done":cur.status,auto:!!quiet,
+    autoNote:`${fa(gs.length)} قطعه شناسایی شد${n?`، ${fa(n)} گزارش ثبت شد`:""}${q?`، ${fa(q)} مورد به صف تأیید رفت`:""}${g0?`، ${fa(g0)} تعارف کنار گذاشته شد`:""}.`}));
+  return n>0; }
+/* ---------- پرونده‌ی موضوعی: از «از خط خارج» تا «اومد تو خط» ---------- */
+const caseOpen=mid=>S.cases.find(q=>q.subject===mid&&q.state!=="closed");
+const caseMin=c=>Math.min(48*60,Math.round(((c.closedAt||Date.now())-c.openedAt)/60000));
+async function caseTouch(x){ const mid=x.machineId; if(!mid) return;
+  const at=+x.ts||Date.now(), op=caseOpen(mid), ev={at,kind:x.type,text:String(x.body||"").slice(0,200),seg:x.id};
+  if(x.type==="ready"){ if(!op) return;
+    await save("cases",Object.assign({},op,{state:"closed",closedAt:at,dur:Math.min(48*60,Math.round((at-op.openedAt)/60000)),events:[...(op.events||[]),ev]})); return; }
+  if(x.type==="fault"||x.sleep){ if(op){ await save("cases",Object.assign({},op,{events:[...(op.events||[]),ev]})); return; }
+    await save("cases",{id:uid(),subject:mid,kind:"توقف / خرابی",state:"open",openedAt:at,closedAt:0,dur:0,alka:"",events:[ev],rep:"",repWarn:""}); return; }
+  if(op) await save("cases",Object.assign({},op,{events:[...(op.events||[]),ev]})); }
+/* ---------- تطبیق با GPS: تأیید، مغایرت، یا غیرقابل‌بررسی ---------- */
+const hhmmTs=(day,hm)=>{ const p=toEn(hm||"00:00").split(":"), d=new Date(day+"T00:00:00"); d.setHours(+p[0]||0,+p[1]||0,0,0); return d.getTime(); };
+const verOf=id=>[...S.verif].filter(v=>v.recId===id).sort((a,b)=>b.at-a.at)[0];
+async function verifRun(x){
+  const kind=x.cause==="سوخت‌گیری"?"fuel":(x.type==="fault"||x.sleep)?"stop":x.type==="ready"?"ready":x.type==="trip"?"trip":"";
+  if(!kind) return; const day=x.rdate||x.date, m=S.machines.find(q=>q.id===x.machineId);
+  const rec={id:uid(),recId:x.id,kind,at:Date.now(),src:"gps",verdict:"none",checks:[],delta:0};
+  const stop=async msg=>{ rec.checks.push(msg); await save("verif",rec); await verMark(x,"none"); };
+  if(!gpsUrl()) return stop("سرویس GPS وصل نیست");
+  if(!m) return stop("دستگاه این گزارش مشخص نیست");
+  if(m.gpsNone) return stop("این دستگاه ردیاب ندارد"+(m.gpsVia?" (با "+mName(m.gpsVia)+" جابه‌جا می‌شود)":""));
+  let tr=[];
+  try{ const j=await gpsGet("/gps/trips?from="+day+"&to="+day); tr=(j.trips||[]).filter(g=>String(g.code)===gcode(m)); }
+  catch(e){ return stop("GPS پاسخ نداد: "+(e.message||e)); }
+  const T=hhmmTs(day,x.fromT||x.time), tol=verTol(), zones=(gps.st&&gps.st.zones)||[];
+  if(kind==="fuel"){
+    if(!zones.some(z=>z.kind==="fuel")) return stop("محدوده‌ی جایگاه سوخت هنوز تعریف نشده");
+    const inZone=tr.filter(g=>(g.zones||[]).some(z=>z.kind==="fuel"));
+    if(inZone.some(g=>T>=g.out-tol&&T<=g.in+tol)){ rec.verdict="ok"; rec.checks.push("ردیاب در همان ساعت در محدوده‌ی جایگاه سوخت بوده"); }
+    else if(inZone.length){ rec.verdict="flag"; rec.checks.push("ردیاب امروز به جایگاه رفته اما نه در ساعت گزارش‌شده"); }
+    else { rec.verdict="flag"; rec.checks.push("ردیاب این روز وارد محدوده‌ی جایگاه سوخت نشده"); } }
+  if(kind==="stop"){ const after=tr.filter(g=>g.out>T+tol);
+    if(after.length){ rec.verdict="flag"; rec.delta=after.length; rec.checks.push(`بعد از ساعت گزارش‌شده ${fa(after.length)} خروج از کارخانه ثبت شده`); }
+    else { rec.verdict="ok"; rec.checks.push("بعد از ساعت گزارش‌شده حرکتی ثبت نشده"); } }
+  if(kind==="ready"){ const after=tr.filter(g=>g.out>=T-tol);
+    if(after.length){ rec.verdict="ok"; rec.checks.push("بعد از اعلام، دستگاه دوباره از کارخانه خارج شده"); }
+    else { rec.verdict="flag"; rec.checks.push("بعد از اعلام آماده‌به‌کاری هنوز حرکتی از این دستگاه ثبت نشده"); } }
+  if(kind==="trip"){ const n=(gps.st?tr.filter(gpsIsSvc):tr).length, d=(+x.n||0)-n; rec.delta=d;
+    if(!gps.st) return stop("وضعیت ردیاب هنوز خوانده نشده؛ یک بار تب ناوگان زنده را باز کن");
+    if(Math.abs(d)<=1){ rec.verdict="ok"; rec.checks.push(`GPS ${fa(n)} سرویس شمرده`); }
+    else { rec.verdict="flag"; rec.checks.push(`GPS ${fa(n)} سرویس شمرده اما ${fa(+x.n||0)} سرویس گزارش شده`); } }
+  await save("verif",rec); await verMark(x,rec.verdict); }
+async function verMark(x,v){ const col=x.smsId?"smsSeg":"sms", cur=(S[col]||[]).find(y=>y.id===x.id);
+  if(cur&&cur.vState!==v) await save(col,Object.assign({},cur,{vState:v})); }
+async function verifAll(){ let n=0;
+  for(const s of S.smsSeg.filter(y=>y.state==="done"&&!y.vState)){ await verifRun(s); n++; }
+  for(const s of S.sms.filter(y=>y.status==="done"&&!y.vState&&!y.segs)){ await verifRun(s); n++; }
+  render(); return n; }
+/* ---------- هوش مصنوعی: فقط قطعه‌بندی و تشخیص موضوع؛ اعداد از متن واقعی خوانده می‌شوند ---------- */
+const AI_ON=()=>{ const c=LS.get("cfg",{})||{}; return !!(c.url&&c.token); };
+const AI_KINDS=["greet","fix","ask","fuel"].concat(Object.keys(SMS_T));
+async function aiExtract(manual){
+  if(!AI_ON()){ if(manual) alert("اول در تب تنظیمات آدرس سرور دستیار و رمز اپ را وارد کن."); return 0; }
+  const bad=[...new Set(S.smsSeg.filter(s=>s.state==="queued"&&!s.ai&&s.kind==="rep").map(s=>s.smsId))];
+  const L=S.sms.filter(x=>x.status==="new"&&x.contactId&&!x.aiSeg&&(bad.includes(x.id)||!x.segs)).slice(0,15);
+  if(!L.length){ if(manual) alert("قطعه‌ی نامشخصی برای تحلیل نمانده."); return 0; }
+  const prompt=`پیامک‌های زیر را پرسنل یک کارخانه بتن آماده (رانندگان، اپراتورهای بچینگ، کارگران محوطه و کارواش) برای دستیار سرپرست کارگاه فرستاده‌اند.
+هر پیامک را به قطعه‌های معنایی بشکن و فقط یک آرایه JSON برگردان، بدون هیچ متن دیگر.
+قالب: [{"id":"همان شناسه","segments":[{"text":"عین همان تکه از متن اصلی، بدون تغییر","kind":"نوع","machine":"سه یا پنج رقم پلاک اگر در همان تکه آمده وگرنه null","conf":عدد بین ۰ و ۱}]}]
+نوع یکی از این‌هاست: greet (سلام و تعارف و تشکر)، ask (درخواست شخصی مثل حقوق و مساعده)، fix (اصلاح یا لغو گزارش قبلی)، fuel (سوخت‌گیری)، fault (خرابی)، stop (توقف یا معطلی بدون خرابی)، incident (تصادف یا ایمنی)، batch (گزارش تولید بچینگ)، ready (آماده‌به‌کار شدن یا برگشتن به خط)، service (سرویس انجام‌شده)، svcdue (اعلام موعد سرویس)، att (مرخصی یا غیبت)، need (نیاز به قطعه)، wash (کارواش)، trip (تعداد سرویس حمل)، job (کار محوطه)، report (بقیه).
+قاعده‌ها: متن هر قطعه باید عیناً بخشی از پیام اصلی باشد و حق نداری کلمه‌ای اضافه یا کم کنی. هیچ عدد تازه‌ای نساز. اگر شک داری conf را زیر ۰٫۶ بگذار و نوع را report بنویس. «از خط خارج» یعنی fault و «اومد تو خط» یعنی ready.
+پیام‌ها: ${JSON.stringify(L.map(x=>({id:x.id,role:(S.contacts.find(c=>c.id===x.contactId)||{}).role||"",text:x.body})))}`;
+  const t0=Date.now(); let arr=null, txt="";
+  try{ txt=await callClaude(prompt); const a=txt.indexOf("["), b=txt.lastIndexOf("]"); arr=JSON.parse(txt.slice(a,b+1));
+    await save("aiLog",{id:uid(),at:Date.now(),kind:"extract",n:L.length,ms:Date.now()-t0,ok:true,raw:String(txt).slice(0,3000)});
+  }catch(e){ await save("aiLog",{id:uid(),at:Date.now(),kind:"extract",n:L.length,ms:Date.now()-t0,ok:false,err:String(e.message||e),raw:String(txt).slice(0,1500)});
+    if(manual) alert("تحلیل دستیار ناموفق بود: "+(e.message||e)); return 0; }
+  let n=0;
+  for(const r of (Array.isArray(arr)?arr:[])){ const x=S.sms.find(y=>y.id===r.id); if(!x) continue;
+    for(const old of S.smsSeg.filter(s=>s.smsId===x.id&&s.state!=="done")) await del("smsSeg",old.id);
+    const segs=(r.segments||[]).filter(g=>String(g.text||"").trim());
+    for(let i=0;i<segs.length;i++){ const g=segs[i], txt2=String(g.text).trim(), at=x.body.indexOf(txt2);
+      const sg=segRecord(x,{span:at>=0?[at,at+txt2.length]:[0,0],text:txt2},"a"+i);
+      sg.by="ai"; sg.ai=true;
+      if(AI_KINDS.includes(g.kind)){
+        if(["greet","fix","ask"].includes(g.kind)) sg.kind=g.kind;
+        else { sg.kind="rep"; if(g.kind==="fuel"){ sg.type="stop"; sg.cause="سوخت‌گیری"; sg.fuel=true; } else sg.type=g.kind; } }
+      if(g.machine&&!sg.machineId){ const code=toEn(String(g.machine)).replace(/\D/g,"");
+        const hit=S.machines.filter(q=>code&&String(q.code||"").endsWith(code)); if(hit.length===1) sg.machineId=hit[0].id; }
+      if(+g.conf>0) sg.conf=Math.min(.99,+(+g.conf).toFixed(2));
+      if(sg.kind==="greet"){ sg.state="ignored"; sg.status="archived"; }
+      if(await segRun(sg,true)) n++; }
+    await save("sms",Object.assign({},S.sms.find(y=>y.id===x.id)||x,{aiSeg:true,segs:segs.length,
+      autoNote:`دستیار ${fa(segs.length)} قطعه شناسایی کرد.`})); }
+  render(); if(manual) alert(`${fa(L.length)} پیام با دستیار تحلیل شد و ${fa(n)} گزارش ثبت شد.`);
+  return n; }
+/* گزارش کامل یک پرونده از روی داده‌ی ثبت‌شده (هیچ عددی بیرون از داده پذیرفته نمی‌شود) */
+async function caseReport(id){ const c=S.cases.find(q=>q.id===id); if(!c) return;
+  if(!AI_ON()) return alert("اول در تب تنظیمات آدرس سرور دستیار و رمز اپ را وارد کن.");
+  const m=S.machines.find(q=>q.id===c.subject), evs=(c.events||[]);
+  const vs=S.verif.filter(v=>evs.some(e=>e.seg===v.recId));
+  const data={دستگاه:m?m.name:"نامشخص",نوع_دستگاه:m?m.type:"",راننده:(S.contacts.find(k=>k.machineId===c.subject&&k.active!==false)||{}).name||"",
+    شروع:jal(localISO(new Date(c.openedAt)))+" ساعت "+new Date(c.openedAt).toTimeString().slice(0,5),
+    پایان:c.closedAt?jal(localISO(new Date(c.closedAt)))+" ساعت "+new Date(c.closedAt).toTimeString().slice(0,5):"هنوز باز است",
+    مدت_دقیقه:caseMin(c),شماره_آلکا:c.alka||"ثبت نشده",
+    رویدادها:evs.map(e=>({ساعت:new Date(e.at).toTimeString().slice(0,5),متن:e.text})),
+    خرابی_های_اخیر_همین_دستگاه:S.faults.filter(f=>f.machineId===c.subject).slice(-3).map(f=>({تاریخ:jal(f.date),عنوان:f.title,وضعیت:f.status})),
+    تطبیق_GPS:vs.length?vs.map(v=>v.checks.join("؛ ")):["بررسی نشده"]};
+  const prompt=`${ROLE}
+از روی داده‌ی زیر یک گزارش کوتاه مدیریتی فارسی بنویس (حداکثر ۶ بند کوتاه): شرح رویداد، مدت توقف و اثرش بر ظرفیت ناوگان، سابقه‌ی تکرار، نتیجه‌ی تطبیق GPS، و پیشنهاد اصلاحی.
+هیچ عددی ننویس که در داده نیامده باشد. اگر چیزی در داده نیست بنویس «ثبت نشده». عنوان و تیتر اضافه نگذار.
+داده: ${JSON.stringify(data)}`;
+  try{ const txt=await callClaude(prompt);
+    const got=new Set((toEn(JSON.stringify(data)).match(/\d+/g)||[]));
+    const extra=[...new Set((toEn(txt).match(/\d+/g)||[]).filter(v=>v.length>1&&!got.has(v)))];
+    await save("cases",Object.assign({},c,{rep:txt,repAt:Date.now(),
+      repWarn:extra.length?`${fa(extra.length)} عدد در متن هست که در داده‌ی ثبت‌شده نبود (${extra.slice(0,4).join("، ")}) — قبل از ارسال بررسی کن.`:""}));
+  }catch(e){ alert("ساخت گزارش ناموفق بود: "+(e.message||e)); } }
+/* ---------- کارنامه‌ی گزارش‌دهی هر نفر (از روی قطعه‌ها ساخته می‌شود، جایی ذخیره نمی‌شود) ---------- */
+function pledger(from,to){ const by={};
+  const add=(cid,k)=>{ if(!cid) return; const o=by[cid]||(by[cid]={id:cid,n:0,rep:0,greet:0,fix:0,q:0,flag:0}); o[k]++; o.n++; };
+  for(const s of S.smsSeg) if(inR(s.date,from,to)){ add(s.contactId,s.kind==="rep"?"rep":s.kind==="greet"?"greet":s.kind==="fix"?"fix":"rep");
+    const o=by[s.contactId]; if(!o) continue; if(s.state==="queued") o.q++; if(s.vState==="flag") o.flag++; }
+  return Object.values(by).map(o=>Object.assign(o,{name:(S.contacts.find(c=>c.id===o.id)||{}).name||"ناشناس"})).sort((a,b)=>b.n-a.n); }
+/* ---------- نمایش قطعه‌ها، صف تأیید و پرونده‌ها ---------- */
+const VER_T={ok:'<span class="tag ok">تأیید GPS</span>',flag:'<span class="tag due">مغایرت GPS</span>',none:'<span class="tag">غیرقابل‌بررسی</span>'};
+function segLine(s){ const v=verOf(s.id);
+  return `<div class="item" style="margin-inline-start:10px">
+   <div class="t">${SEG_L[s.kind]||s.kind}${s.kind==="rep"?` • ${SMS_T[s.type]||s.type}`:""}<span class="tag ${s.state==="done"?"ok":s.state==="queued"?"soon":""}">${SEG_ST[s.state]||s.state}</span>${s.by==="ai"?'<span class="tag">دستیار</span>':""}<span class="tag">اطمینان ${fa(Math.round(s.conf*100))}٪</span>${s.vState?VER_T[s.vState]:""}</div>
+   <div style="white-space:pre-wrap;font-size:13px;margin:3px 0">${esc(s.body)}</div>
+   ${s.machineId?`<div class="m">${esc(mName(s.machineId))}${s.minutes?` • ${fa(s.minutes)} دقیقه`:""}${s.liters?` • ${fa(s.liters)} لیتر`:""}${s.fromT?` • ${faNum(s.fromT)}`:""}</div>`:""}
+   ${s.autoNote?`<div class="note" style="margin:3px 0">${esc(s.autoNote)}</div>`:""}
+   ${v&&v.checks.length?`<div class="m">GPS: ${esc(v.checks.join(" • "))}</div>`:""}
+   <div class="row" style="margin-top:5px">${s.state==="queued"&&s.kind==="rep"&&smsKind(s)?`<button class="primary" data-segok="${s.id}">${SMS_BTN[smsKind(s)]||"ثبت"}</button>`:""}
+    ${s.state==="queued"?`<button class="ghost" data-segign="${s.id}">نادیده بگیر</button>`:""}
+    ${s.state==="done"?`<button class="ghost" data-segrev="${s.id}">لغو ثبت</button>`:""}
+    ${s.state==="done"&&!s.vState?`<button class="ghost" data-segver="${s.id}">تطبیق GPS</button>`:""}</div></div>`; }
+function fixTargets(s){ return [...S.smsSeg.filter(y=>y.state==="done"&&y.contactId===s.contactId&&Math.abs(y.ts-s.ts)<48*3600e3&&y.id!==s.id),
+  ...S.sms.filter(y=>y.status==="done"&&!y.segs&&y.contactId===s.contactId&&Math.abs(y.ts-s.ts)<48*3600e3)].sort((a,b)=>b.ts-a.ts).slice(0,4); }
+function vQueue(){ const Q=S.smsSeg.filter(s=>s.state==="queued").sort((a,b)=>b.ts-a.ts).slice(0,40);
+  if(!Q.length) return "";
+  return `<div class="card"><h3>صف تأیید<span class="tag due">${fa(S.smsSeg.filter(s=>s.state==="queued").length)}</span></h3>
+   <div class="note">این‌ها هنوز در هیچ گزارشی شمرده نشده‌اند. تا وقتی تأیید نکنی در آمار نمی‌آیند.</div>
+   ${Q.map(s=>`<div class="item"><div class="t">${esc(s.driver||s.phone||"ناشناس")} • ${jal(s.date)} ${faNum(s.time||"")}<span class="tag ${s.kind==="fix"?"due":"soon"}">${SEG_L[s.kind]||s.kind}</span>${s.by==="ai"?'<span class="tag">دستیار</span>':""}<span class="tag">اطمینان ${fa(Math.round(s.conf*100))}٪</span></div>
+    <div style="white-space:pre-wrap;font-size:14px;margin:4px 0">${esc(s.body)}</div>
+    ${s.kind==="fix"?`<div class="note">به نظر می‌رسد اصلاح یک گزارش قبلی است. اگر درست است، ثبتِ همان مورد را لغو کن تا دوباره وارد شود:</div>
+      ${fixTargets(s).map(y=>`<div class="m">• ${jal(y.date)} ${faNum(y.time||"")} — ${esc(String(y.body).slice(0,60))} <button class="ghost" data-segrev="${y.id}" style="min-height:0;padding:3px 9px">لغو ثبت</button></div>`).join("")||'<div class="m">گزارش ثبت‌شده‌ای از این فرستنده در ۴۸ ساعت گذشته پیدا نشد.</div>'}`:""}
+    ${s.kind==="ask"?'<div class="note">درخواست شخصی است؛ با «ثبت کار» به تب دستورات مدیر می‌رود.</div>':""}
+    <div class="grid2" style="margin-top:6px"><select data-segt="${s.id}">${Object.entries(SMS_T).map(([kk,v])=>`<option value="${kk}" ${s.type===kk?"selected":""}>${v}</option>`).join("")}</select>
+     <select data-segmc="${s.id}"><option value="">دستگاه —</option>${S.machines.map(m=>`<option value="${m.id}" ${s.machineId===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select></div>
+    <div class="row" style="margin-top:6px">${smsKind(s)?`<button class="primary" data-segok="${s.id}">${SMS_BTN[smsKind(s)]||"ثبت"}</button>`:""}
+     ${s.kind!=="rep"?`<button class="ghost" data-segtask="${s.id}">ثبت کار</button>`:""}
+     <button class="ghost" data-segign="${s.id}">نادیده بگیر</button><button class="danger" data-segdel="${s.id}">حذف قطعه</button></div></div>`).join("")}</div>`; }
+function vCases(){ const O=S.cases.filter(c=>c.state!=="closed").sort((a,b)=>a.openedAt-b.openedAt),
+  C=S.cases.filter(c=>c.state==="closed").sort((a,b)=>b.closedAt-a.closedAt).slice(0,5);
+  if(!O.length&&!C.length) return "";
+  const one=(c,open)=>{ const mn=caseMin(c), long=open&&mn>=1440;
+    return `<div class="item"><div class="t">${esc(mName(c.subject))}<span class="tag ${open?(long?"due":"soon"):"ok"}">${open?"باز":"بسته"}</span>${long?'<span class="tag due">بیش از ۲۴ ساعت</span>':""}${c.alka?`<span class="tag">آلکا ${esc(c.alka)}</span>`:""}</div>
+     <div class="m">از ${jal(localISO(new Date(c.openedAt)))} ساعت ${faNum(new Date(c.openedAt).toTimeString().slice(0,5))}${c.closedAt?` تا ${jal(localISO(new Date(c.closedAt)))} ساعت ${faNum(new Date(c.closedAt).toTimeString().slice(0,5))}`:""} • ${f1(mn/60)} ساعت${mn>=2880?" (سقف ۴۸ ساعت)":""} • ${fa((c.events||[]).length)} رویداد</div>
+     ${(c.events||[]).slice(-3).map(e=>`<div class="m">• ${faNum(new Date(e.at).toTimeString().slice(0,5))} — ${esc(e.text)}</div>`).join("")}
+     ${c.rep?`<div class="note" style="white-space:pre-wrap;margin-top:5px">${esc(c.rep)}</div>`:""}
+     ${c.repWarn?`<div class="note" style="color:var(--bad)">${esc(c.repWarn)}</div>`:""}
+     <div class="row" style="margin-top:6px"><input data-casealka="${c.id}" placeholder="شماره ارجاع آلکا" value="${esc(c.alka||"")}" style="max-width:170px">
+      <button class="ghost" data-casesave="${c.id}">ذخیره شماره</button><button class="ghost" data-caserep="${c.id}">${c.rep?"ساخت دوباره‌ی گزارش":"گزارش کامل با دستیار"}</button>
+      ${c.rep?`<button class="ghost" data-casecopy="${c.id}">کپی گزارش</button>`:""}
+      ${open?`<button class="ghost" data-caseclose="${c.id}">بستن پرونده</button>`:""}</div></div>`; };
+  return `<div class="card"><h3>پرونده‌های توقف و خرابی${O.length?`<span class="tag due">${fa(O.length)} باز</span>`:""}</h3>
+   <div class="note">پرونده از «از خط خارج» باز می‌شود و با «اومد تو خط» بسته. سابقه‌ی رسمی تعمیر در آلکا می‌ماند؛ اینجا فقط زمان توقف و اثرش بر ناوگان است.</div>
+   ${O.map(c=>one(c,true)).join("")}
+   ${C.length?`<details style="margin-top:6px"><summary>پرونده‌های بسته‌شده‌ی اخیر (${fa(C.length)})</summary>${C.map(c=>one(c,false)).join("")}</details>`:""}</div>`; }
+function vPledger(){ const t=todayISO(), L=pledger(addDays(t,-29),t); if(!L.length) return "";
+  return `<div class="card"><h3>کارنامه‌ی گزارش‌دهی پرسنل (۳۰ روز)</h3>
+   ${tbl(["نفر","قطعه","گزارش","تعارف","اصلاح","در صف","مغایرت GPS"],L.map(o=>[esc(o.name),fa(o.n),fa(o.rep),fa(o.greet),fa(o.fix),o.q?bad(fa(o.q),true):"۰",o.flag?bad(fa(o.flag),true):"۰"]))}
+   <div class="note">این جدول فقط نظم گزارش‌دهی را نشان می‌دهد، نه عملکرد کاری؛ عملکرد در تب «عملکرد پرسنل» حساب می‌شود.</div></div>`; }
 /* ---------- گزارش پیامکی بچینگ: چند روز در یک پیام، دستگاه، متراژ، تناژ و تعمیرات اوپراتور ---------- */
 const J_MONTHS=[["فروردین"],["اردیبهشت"],["خرداد"],["تیر"],["مرداد","امرداد"],["شهریور"],["مهر"],["آبان","ابان"],["آذر","اذر"],["دی"],["بهمن"],["اسفند"]];
 const PLANT_L={a:"A","آ":"A",b:"B","ب":"B",c:"C","سی":"C"};
@@ -1291,6 +1526,9 @@ function smsItem(x){const st_=x.status==="new"?'<span class="tag soon">جدید<
    <div style="white-space:pre-wrap;margin:4px 0;font-size:14px">${esc(x.body)}</div>${x.summary?`<div class="m">خلاصه: ${esc(x.summary)}</div>`:""}
    ${x.autoNote?`<div class="note" style="margin:4px 0">${esc(x.autoNote)}</div>`:""}
    ${x.status==="new"&&k==="batch"?`<div class="note" style="margin:4px 0">گزارش بچینگ:</div>${batchSmsPreview(x)}`:""}
+   ${(()=>{const G=S.smsSeg.filter(s=>s.smsId===x.id).sort((p,q)=>String(p.id).localeCompare(String(q.id)));
+     return G.length?`<details ${G.some(s=>s.state==="queued")?"open":""} style="margin:4px 0"><summary style="font-size:13px">قطعه‌های این پیام (${fa(G.length)})${G.some(s=>s.state==="queued")?" — نیاز به تأیید":""}</summary>${G.map(segLine).join("")}</details>`:""})()}
+   ${x.status!=="done"&&!S.smsSeg.some(s=>s.smsId===x.id)?`<button class="ghost" data-segrun="${x.id}" style="min-height:0;padding:4px 10px;margin:3px 0">شکستن به قطعه و تحلیل</button>`:""}
    ${x.status==="new"&&!x.contactId?'<div class="note" style="margin:4px 0;color:var(--bad)">فرستنده در فهرست پرسنل نیست؛ برای ثبت خودکار، شماره‌اش را به یکی از پرسنل بده.</div>':""}
    ${true?`<details><summary style="font-size:13px">${x.status==="new"?"اصلاح دسته‌بندی":"اصلاح مقادیر این پیام"}</summary><div class="grid2" style="margin-top:6px">
     <select data-smst="${x.id}">${Object.entries(SMS_T).map(([kk,v])=>`<option value="${kk}" ${x.type===kk?"selected":""}>${v}</option>`).join("")}</select>
@@ -1320,11 +1558,20 @@ function vSms(){const P=SMSP(), t=todayISO(), a=smsAgg(addDays(t,-29),t), tot=su
    <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="smsAuto" type="checkbox" style="width:auto" ${LS.get("smsAuto",true)?"checked":""}> ثبت خودکار گزارش از روی پیامک</label>
    <label style="display:flex;gap:8px;align-items:center"><input id="smsAi" type="checkbox" style="width:auto" ${LS.get("smsAi",true)?"checked":""}> کمک گرفتن از دستیار برای پیام‌های نامشخص</label>
    <label style="display:flex;gap:8px;align-items:center"><input id="smsNotify" type="checkbox" style="width:auto" ${LS.get("smsNotify",true)?"checked":""}> اعلان پیام پرسنل وقتی اپ بسته است</label>
+   <label style="display:flex;gap:8px;align-items:center"><input id="segOn" type="checkbox" style="width:auto" ${SEG_ON()?"checked":""}> شکستن پیام به قطعه و جدا کردن تعارف و اصلاح</label>
+   <div class="row" style="margin-top:8px"><button class="ghost" id="aiSeg">تحلیل قطعه‌های نامشخص با دستیار</button><button class="ghost" id="verAll">تطبیق با GPS</button></div>
+   <div class="grid2" style="margin-top:8px"><div><label>حد اطمینان برای ثبت خودکار (٪)</label><input id="segConf" type="number" inputmode="numeric" min="30" max="95" value="${+LS.get("segConf",60)}"></div>
+    <div><label>اختلاف زمانی مجاز با GPS (دقیقه)</label><input id="verTol" type="number" inputmode="numeric" min="5" max="180" value="${+LS.get("verTol",30)}"></div></div>
+   <div class="row" style="margin-top:8px"><button class="ghost" id="saveSeg">ذخیره آستانه‌ها</button></div>
+   <div class="note" style="margin-top:6px">هر چیزی که زیر حد اطمینان باشد به «صف تأیید» می‌رود و در هیچ عدد و شاخصی شمرده نمی‌شود. اعداد همیشه از متن خود پیامک خوانده می‌شوند، نه از دستیار.</div>
    <div class="note" style="margin-top:6px">فقط پیامک شماره‌هایی که پایین ثبت کرده‌ای خوانده می‌شود و بقیه پیامک‌هایت وارد اپ نمی‌شوند. وقتی اپ باز است پیام‌ها خودکار وارد می‌شوند و وقتی بسته است، با باز کردن اپ.</div></div>
+  ${vQueue()}
+  ${vCases()}
   <div class="card"><h3>پیام‌ها</h3>
    <div class="chips">${[["new",`جدید ${fa(nNew)}`],["all","همه"],...Object.keys(SMS_T).filter(k=>k==="report"||S.sms.some(x=>x.type===k)).map(k=>[k,SMS_T[k]])].map(([k,n])=>`<button class="chip ${smsF===k?"on":""}" data-smsf="${k}">${n}</button>`).join("")}</div>
    <div class="row" style="margin:6px 0"><button class="ghost" id="smsRe">تحلیل دوباره‌ی پیام‌های جدید</button><button class="ghost" id="smsMerge">ادغام پیام‌های تیک‌خورده</button></div>
    ${list.length?list.map(smsItem).join(""):'<div class="empty">پیامی در این دسته نیست.</div>'}</div>
+  ${vPledger()}
   ${a.drivers.length?`<div class="card"><h3>گزارش ۳۰ روز به تفکیک فرستنده</h3><div class="scrollx"><table><tr><th>فرستنده</th><th>پیام</th><th>خرابی</th><th>توقف (دقیقه)</th><th>حادثه</th></tr>
    ${a.drivers.map(o=>`<tr><td>${esc(o.d)}</td><td>${fa(o.n)}</td><td>${fa(o.f)}</td><td>${fa(o.st)}</td><td>${fa(o.inc)}</td></tr>`).join("")}</table></div></div>`:""}
   ${a.cause.length?`<div class="card"><h3>علت توقف‌های گزارش‌شده (۳۰ روز)</h3>${a.cause.map(([k,v])=>`<div class="par"><div class="pl">${esc(k)}</div><div class="bar"><i style="width:${Math.round(v/mx*100)}%"></i></div>
@@ -1347,17 +1594,18 @@ function vSms(){const P=SMSP(), t=todayISO(), a=smsAgg(addDays(t,-29),t), tot=su
    <label>فرستنده</label><select id="msd">${ROLES.filter(r=>S.contacts.some(c=>roleOf(c)===r)).map(r=>`<optgroup label="${r}">${S.contacts.filter(c=>roleOf(c)===r).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</optgroup>`).join("")}</select>
    <label>متن پیامک</label><textarea id="msb"></textarea>
    <div class="row" style="margin-top:9px"><button class="primary" id="addSmsM">افزودن</button></div></details></div>`;}
-async function smsConvert(kind,x,quiet){
+async function smsConvert(kind,x,quiet,col){
+  col=col||"sms";                                      // قطعه‌های یک پیامک در smsSeg ثبت می‌شوند، نه در sms
   x=Object.assign({},x,{date:x.rdate||x.date});       // گزارش به روزی ثبت می‌شود که در متن آمده
   const say=m=>{ if(!quiet) alert(m); }, made=[], rev=[], days_=[];
   const mk=async(col,o)=>{ await save(col,o); made.push([col,o.id]); };
   const ch=async(col,old,nw)=>{ rev.push([col,JSON.parse(JSON.stringify(old))]); await save(col,nw); };
-  const done=async(note,linked)=>{ await save("sms",Object.assign({},S.sms.find(y=>y.id===x.id)||x,{status:"done",made,rev,days:days_,autoNote:note,auto:!!quiet,linked:linked||""})); say(note); return true; };
+  const done=async(note,linked)=>{ await save(col,Object.assign({},(S[col]||[]).find(y=>y.id===x.id)||x,{status:"done",made,rev,days:days_,autoNote:note,auto:!!quiet,linked:linked||""})); say(note); return true; };
   const needM=()=>{ if(x.machineId) return true; say("ابتدا در «اصلاح دسته‌بندی» دستگاه را انتخاب کن."); return false; };
   const needC=()=>{ if(x.contactId) return true; say("فرستنده در فهرست پرسنل نیست؛ اول شماره‌اش را برای یکی از پرسنل ثبت کن."); return false; };
   const mm=S.machines.find(y=>y.id===x.machineId), who=x.driver||x.phone||"";
   const title=x.title||x.summary||smsTitle(x.body), note=`گزارش پیامکی ${who} (${jal(x.date)} ${faNum(x.time||"")}): ${x.body}`;
-  if(kind==="ok"){ await save("sms",Object.assign({},x,{status:"archived"})); return true; }
+  if(kind==="ok"){ await save(col,Object.assign({},x,{status:"archived",state:col==="smsSeg"?"ignored":undefined})); return true; }
   if(kind==="stopnote"){ if(!(+x.minutes>0)){ say("مدت توقف را در «اصلاح دسته‌بندی» وارد کن."); return false; } return done(`${fa(x.minutes)} دقیقه توقف (${x.cause||"سایر"}) در گزارش توقف‌های ${who} حساب شد.`); }
   if(kind==="batch"){ if(!needC()) return false; const segs=batchSmsParse(x.body,x.date); let nv=0, na=0, nr=0; if(!segs.length) return false;
     const own=S.contacts.find(k=>k.id===x.contactId), ownM=own&&(S.machines.find(q=>q.id===own.machineId)||{}).type==="بچینگ"?own.machineId:"";
@@ -3091,6 +3339,30 @@ document.addEventListener("click",async e=>{
   if(b.dataset.smsdel){ const x=S.sms.find(y=>y.id===b.dataset.smsdel); if(!x) return;
     if(!confirm(x.status==="done"&&(x.made||[]).length?"پیام حذف شود؟ رکوردهایی که از آن ثبت شده سر جایشان می‌مانند (برای حذف آن‌ها اول «لغو ثبت» را بزن).":"این پیام حذف شود؟")) return;
     await del("sms",x.id); return; }
+  if(b.id==="saveSeg"){ LS.set("segConf",Math.min(95,Math.max(30,+toEn(gv("segConf"))||60))); LS.set("verTol",Math.min(180,Math.max(5,+toEn(gv("verTol"))||30))); alert("ذخیره شد."); render(); return; }
+  if(b.id==="aiSeg"){ b.disabled=true; await aiExtract(true); b.disabled=false; return; }
+  if(b.id==="verAll"){ b.disabled=true; const n=await verifAll(); alert(n?fa(n)+" گزارش با GPS تطبیق داده شد.":"گزارش تطبیق‌نشده‌ای نمانده."); b.disabled=false; return; }
+  if(b.dataset.segrun){ const x=S.sms.find(y=>y.id===b.dataset.segrun); if(!x) return; b.disabled=true; await smsProcess(x,false); render(); return; }
+  if(b.dataset.segok){ const s=S.smsSeg.find(y=>y.id===b.dataset.segok); if(!s) return; const k=smsKind(s); if(!k) return alert("نوع این قطعه مشخص نیست؛ اول نوعش را انتخاب کن.");
+    const ok=await smsConvert(k,s,false,"smsSeg");
+    if(ok){ const cur=S.smsSeg.find(y=>y.id===s.id)||s; await save("smsSeg",Object.assign({},cur,{state:"done",by:"user"})); await caseTouch(cur); await verifRun(cur); } return; }
+  if(b.dataset.segign){ const s=S.smsSeg.find(y=>y.id===b.dataset.segign); if(s) await save("smsSeg",Object.assign({},s,{state:"ignored",status:"archived"})); return; }
+  if(b.dataset.segrev){ const s=S.smsSeg.find(y=>y.id===b.dataset.segrev)||S.sms.find(y=>y.id===b.dataset.segrev); if(!s) return;
+    if(!confirm("ثبتِ این مورد لغو و رکوردهای ساخته‌شده از آن حذف شود؟")) return; await smsRevert(s); return; }
+  if(b.dataset.segver){ const s=S.smsSeg.find(y=>y.id===b.dataset.segver); if(!s) return; b.disabled=true; await verifRun(s); render(); return; }
+  if(b.dataset.segdel){ const s=S.smsSeg.find(y=>y.id===b.dataset.segdel); if(!s) return;
+    if(s.state==="done") return alert("اول «لغو ثبت» این قطعه را بزن."); if(confirm("این قطعه حذف شود؟ متن پیامک دست نمی‌خورد.")) await del("smsSeg",s.id); return; }
+  if(b.dataset.segtask){ const s=S.smsSeg.find(y=>y.id===b.dataset.segtask); if(!s) return;
+    await save("tasks",{id:uid(),kind:"dir",title:String(s.body).slice(0,70),notes:`از پیامک ${s.driver||s.phone} (${jal(s.date)} ${s.time})`,due:s.date,priority:"عادی",status:"open",created:todayISO(),src:"sms"});
+    await save("smsSeg",Object.assign({},s,{state:"done",status:"done",autoNote:"به «کارها» فرستاده شد."})); return; }
+  if(b.dataset.casesave){ const c=S.cases.find(q=>q.id===b.dataset.casesave), el=document.querySelector(`[data-casealka="${b.dataset.casesave}"]`);
+    if(c&&el) await save("cases",Object.assign({},c,{alka:el.value.trim()})); return; }
+  if(b.dataset.caserep){ const id=b.dataset.caserep; b.disabled=true; b.textContent="در حال ساخت…"; await caseReport(id); render(); return; }
+  if(b.dataset.casecopy){ const c=S.cases.find(q=>q.id===b.dataset.casecopy); if(!c||!c.rep) return;
+    try{ await navigator.clipboard.writeText(c.rep); b.textContent="کپی شد"; }catch(e){ alert(c.rep); } return; }
+  if(b.dataset.caseclose){ const c=S.cases.find(q=>q.id===b.dataset.caseclose); if(!c) return;
+    if(!confirm("این پرونده بسته شود؟ مدت توقف تا همین لحظه حساب می‌شود.")) return;
+    await save("cases",Object.assign({},c,{state:"closed",closedAt:Date.now(),dur:caseMin(c)})); return; }
   if(b.id==="smsRe"){ b.disabled=true; const [n,a]=await smsReanalyze(); alert(fa(n)+" پیام دوباره دسته‌بندی شد و "+fa(a)+" گزارش خودکار ثبت شد."); render(); return; }
   if(b.id==="smsMerge"){ const ids=[...document.querySelectorAll("[data-smssel]:checked")].map(e=>e.dataset.smssel), L=S.sms.filter(x=>ids.includes(x.id)).sort((p,q)=>p.ts-q.ts);
     if(L.length<2) return alert("دست‌کم دو پیام را تیک بزن.");
@@ -3238,6 +3510,12 @@ document.addEventListener("change",async e=>{const el=e.target;
   if(el&&el.dataset&&el.dataset.atto){ await attSet(el.dataset.atto,{ot:+toEn(el.value)||0}); return; }
   if(el&&el.id==="smsNotify"){ LS.set("smsNotify",el.checked); pushWatch(); }
   if(el&&el.id==="smsAuto") LS.set("smsAuto",el.checked);
+  if(el&&el.id==="segOn"){ LS.set("segOn",el.checked); render(); return; }
+  const gid2=el&&el.dataset&&(el.dataset.segt||el.dataset.segmc);
+  if(gid2){ const s=S.smsSeg.find(y=>y.id===gid2); if(!s) return; const u={edited:true,by:"user",conf:Math.max(s.conf,.9)};
+    if(el.dataset.segt){ u.type=el.value; if(el.value!=="stop") u.cause=null; }
+    if(el.dataset.segmc) u.machineId=el.value;
+    await save("smsSeg",Object.assign({},s,u)); return; }
   const sid=el&&el.dataset&&(el.dataset.smst||el.dataset.smsc||el.dataset.smsm||el.dataset.smsmc);
   if(sid){ const x=S.sms.find(y=>y.id===sid); if(!x) return; const u={edited:true};
     if(el.dataset.smst) u.type=el.value; if(el.dataset.smsc) u.cause=el.value||null; if(el.dataset.smsm) u.minutes=+toEn(el.value)||null; if(el.dataset.smsmc) u.machineId=el.value;
@@ -4813,7 +5091,8 @@ render(); load();
   var COLN = { machines: "دستگاه", contacts: "پرسنل", sms: "پیام", trips: "سرویس", faults: "خرابی", fuel: "سوخت‌گیری", prod: "تولید روزانه", opprod: "تولید اوپراتور",
     parts: "قطعه", returns: "بتن برگشتی", silos: "شمارش سیلو", counts: "شمارش مواد", receipts: "ورود مصالح", scores: "کسری کارکرد", norms: "نُرم", pumpjobs: "پمپاژ",
     att: "حضور و غیاب", washes: "شستشو", jobs: "کار محوطه", tasks: "کار", incidents: "حادثه", stops: "توقف تولید", log: "سابقه‌ی دستگاه", notes: "یادداشت", ideas: "ایده",
-    check: "مورد چک‌لیست", ticks: "تیک چک‌لیست", rem: "یادآوری", tires: "لاستیک", mixes: "طرح اختلاط", batches: "بچ", calib: "کالیبراسیون", reports: "گزارش", looks: "بازدید ظاهری" };
+    check: "مورد چک‌لیست", ticks: "تیک چک‌لیست", rem: "یادآوری", tires: "لاستیک", mixes: "طرح اختلاط", batches: "بچ", calib: "کالیبراسیون", reports: "گزارش", looks: "بازدید ظاهری",
+    smsSeg: "قطعه‌ی پیامک", cases: "پرونده‌ی توقف", verif: "تطبیق GPS", aiLog: "سابقه‌ی دستیار" };
   var snap = {}, stack = [], gid = 0, undoing = false, tm = 0, MAXG = 40;
   function strip(r) { var o = Object.assign({}, r); delete o.u; return JSON.stringify(o); }
   function resnap(col) { var m = {}, a = S[col] || [], i; for (i = 0; i < a.length; i++) if (a[i] && a[i].id != null) m[a[i].id] = strip(a[i]); snap[col] = m; }
