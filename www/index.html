@@ -222,7 +222,7 @@ const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۳۰ آبان — ۱۱";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const APP_BUILD="۳۰ آبان — ۱۲";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -2655,7 +2655,7 @@ function vRepSum(){
 
 /* ---------- فاز ۴: تحلیل و گزارش ---------- */
 let rsub="sum", relDays=90, cmpSame=true;
-const RSUBS=[["exc","استثنا و جاافتادگی"],["edit","اصلاح رویدادها"],["sum","خلاصه و نمودار"],["cost","بهای تمام‌شده"],["recon","تطبیق حمل و مصالح"],["ops","اوپراتور و سیلو"],["pump","پمپ"],["parts","قطعات و خرید"],["ret","بتن برگشتی"],["cmp","مقایسه ماهانه"],["kpi","شاخص‌ها"],["rel","قابلیت اطمینان و هزینه"],["exp","خروجی PDF و اکسل"]];
+const RSUBS=[["exc","استثنا و جاافتادگی"],["edit","اصلاح رویدادها"],["sum","خلاصه و نمودار"],["cost","بهای تمام‌شده"],["dump","کمپرسی و تریلی"],["recon","تطبیق حمل و مصالح"],["ops","اوپراتور و سیلو"],["pump","پمپ"],["parts","قطعات و خرید"],["ret","بتن برگشتی"],["cmp","مقایسه ماهانه"],["kpi","شاخص‌ها"],["rel","قابلیت اطمینان و هزینه"],["exp","خروجی PDF و اکسل"]];
 const cleanMd=t=>String(t||"").replace(/\*\*(.+?)\*\*/g,"$1").replace(/^#{1,6}\s*/gm,"").replace(/^\s*[-*]\s+/gm,"• ");
 const inR=(d,f,t)=>!!d&&d>=f&&d<=t;
 const sumBy=(a,fn)=>a.reduce((x,y)=>x+(+fn(y)||0),0);
@@ -3002,7 +3002,98 @@ async function fixBig(){ try{
   for(const f of S.faults.filter(y=>+y.downH>48&&/گزارش پیامکی/.test(y.notes||""))) await save("faults",Object.assign({},f,{downH:0}));
   for(const f of S.fuel.filter(y=>+y.min>720)) await save("fuel",Object.assign({},f,{min:0})); }catch(e){} }
 
-function vRep(){const sub={edit:vEdit,sum:vRepSum,cmp:vCmp,kpi:vKpi,rel:vRel,exp:vExp,exc:vExc,cost:vCost,recon:vRecon,ops:vOps,pump:vPump,parts:vParts,ret:vRet}[rsub]||vRepSum;
+/* ---------- گزارش هفتگی و ماهانه‌ی کمپرسی و تریلی ---------- */
+const DCAUSES=["","خرابی ناوگان","تعمیرگاه","صف سوخت","سوخت‌گیری","معاینه فنی","پنچری و لاستیک","تعویض روغن و سرویس","کارواش","دیاگ","باطری‌سازی","آهنگری و جوشکاری","باد و تنظیم","تعمیر برنامه‌دار","انتظار بار","سایر"];
+const BADC=new Set(["خرابی ناوگان","تعمیرگاه","پنچری و لاستیک","دیاگ","باطری‌سازی","آهنگری و جوشکاری"]);
+function dumpRep(f,t){
+  const M=S.machines.filter(m=>DUMP.includes(m.type)), ids=new Set(M.map(m=>m.id));
+  const days=[]; for(let d=f;d<=t;d=addDays(d,1)) days.push(d);
+  const inW=x=>inR(x.date,f,t)&&ids.has(x.machineId);
+  const TR=S.trips.filter(inW), FU=S.fuel.filter(inW), ST=S.stops.filter(inW), FT=S.faults.filter(inW), SC=S.scores.filter(x=>inW(x)&&x.kind==="shortfall");
+  const work=days.filter(d=>!isFri(d)).length||1;
+  const rows=M.filter(m=>m.status!=="غیرفعال").map(m=>{
+    const tr=TR.filter(x=>x.machineId===m.id), fu=FU.filter(x=>x.machineId===m.id), st=ST.filter(x=>x.machineId===m.id);
+    const ft=FT.filter(x=>x.machineId===m.id), sc=SC.filter(x=>x.machineId===m.id);
+    const nrm=normOf(m)||0, bad=st.filter(x=>BADC.has(x.cat||"")), lit=sumBy(fu,x=>x.liters);
+    return {m,n:tr.length,norm:nrm*work,tons:+sumBy(tr,x=>x.tons).toFixed(1),lit,
+      cost:sumBy(fu,x=>x.cost)+sumBy(st,x=>x.cost),min:sumBy(st,x=>x.min),badMin:sumBy(bad,x=>x.min),
+      lpn:tr.length?+(lit/tr.length).toFixed(1):0,ft:ft.length,open:ft.filter(x=>x.status!=="fixed").length,
+      sf:sc.length,sfMinus:sc.filter(x=>+x.minus).length,
+      av:Math.max(0,Math.round(100-(sumBy(bad,x=>x.min)*100)/(days.length*24*60||1)))};
+  }).sort((a,b)=>b.badMin-a.badMin||b.n-a.n);
+  const cz={}; for(const x of ST) cz[x.cat||"سایر"]=(cz[x.cat||"سایر"]||0)+(+x.min||0);
+  const perDay=days.map(d=>TR.filter(x=>x.date===d).length);
+  const stopDay=days.map(d=>+(sumBy(ST.filter(x=>x.date===d),x=>x.min)/60).toFixed(1));
+  const litDay=days.map(d=>sumBy(FU.filter(x=>x.date===d),x=>x.liters));
+  const tot=rows.reduce((a,b)=>({n:a.n+b.n,norm:a.norm+b.norm,tons:a.tons+b.tons,lit:a.lit+b.lit,cost:a.cost+b.cost,
+    min:a.min+b.min,badMin:a.badMin+b.badMin,ft:a.ft+b.ft,open:a.open+b.open,sf:a.sf+b.sf,sfMinus:a.sfMinus+b.sfMinus}),
+    {n:0,norm:0,tons:0,lit:0,cost:0,min:0,badMin:0,ft:0,open:0,sf:0,sfMinus:0});
+  return {M,rows,days,perDay,stopDay,litDay,cz,tot,work,FT,ST,SC,
+    fill:tot.norm?Math.round(tot.n*100/tot.norm):0, lpn:tot.n?+(tot.lit/tot.n).toFixed(1):0,
+    mtbf:tot.ft?+((days.length*24*rows.length-tot.badMin/60)/tot.ft).toFixed(1):0};
+}
+/* تحلیل خودکار: فقط از داده‌ی ثبت‌شده، بدون عدد ساختگی */
+function dumpNotes(R){
+  const out=[], c=secC("dump");
+  if(!R.rows.length) return out;
+  const worst=R.rows[0];
+  if(worst.badMin>0) out.push(`بیشترین خواب خرابی: <b>${esc(worst.m.name)}</b> با ${f1(worst.badMin/60)} ساعت (${fa(Math.round(worst.badMin*100/(R.tot.badMin||1)))}٪ کل خواب خرابی ناوگان).`);
+  const low=R.rows.filter(x=>x.norm>0&&x.n<x.norm*0.75).sort((a,b)=>(a.n/a.norm)-(b.n/b.norm))[0];
+  if(low) out.push(`کمترین تحقق نُرم: <b>${esc(low.m.name)}</b> با ${fa(low.n)} سرویس در برابر نُرم ${fa(low.norm)} (${fa(Math.round(low.n*100/low.norm))}٪).`);
+  const withL=R.rows.filter(x=>x.lpn>0), avg=withL.length?sumBy(withL,x=>x.lpn)/withL.length:0;
+  const hog=withL.filter(x=>avg&&x.lpn>avg*1.25).sort((a,b)=>b.lpn-a.lpn)[0];
+  if(hog) out.push(`مصرف سوخت <b>${esc(hog.m.name)}</b> هر سرویس ${f1(hog.lpn)} لیتر است، ${fa(Math.round((hog.lpn/avg-1)*100))}٪ بالاتر از میانگین ناوگان (${f1(avg)} لیتر).`);
+  const CZ=Object.entries(R.cz).sort((a,b)=>b[1]-a[1]);
+  if(CZ.length) out.push(`بیشترین علت توقف: <b>${esc(CZ[0][0])}</b> با ${f1(CZ[0][1]/60)} ساعت (${fa(Math.round(CZ[0][1]*100/(R.tot.min||1)))}٪ کل توقف‌ها).`);
+  const noFuel=R.rows.filter(x=>x.n>0&&!x.lit);
+  if(noFuel.length) out.push(`${fa(noFuel.length)} دستگاه سرویس داشته ولی هیچ سوختی برایش ثبت نشده (${noFuel.slice(0,3).map(x=>esc(x.m.name)).join("، ")}) — گزارش سوخت ناقص است.`);
+  if(R.tot.sfMinus) out.push(`${fa(R.tot.sfMinus)} روز کم‌کاری بدون علت موجه ثبت شده که امتیاز منفی راننده دارد.`);
+  const rep=R.FT.reduce((a,f)=>{const k=(f.title||"").trim().slice(0,22); if(k) a[k]=(a[k]||0)+1; return a;},{});
+  const rp=Object.entries(rep).filter(q=>q[1]>=2).sort((a,b)=>b[1]-a[1])[0];
+  if(rp) out.push(`خرابی تکرارشونده: «${esc(rp[0])}» ${fa(rp[1])} بار در این بازه.`);
+  return out;
+}
+function vDumpRep(){ const {f,t}=repRange(), R=dumpRep(f,t), c=secC("dump");
+  if(!R.M.length) return `${repChips()}<div class="card"><h3>کمپرسی و تریلی</h3><div class="empty">هیچ کمپرسی یا تریلی در ماشین‌آلات ثبت نشده.</div></div>`;
+  const CZ=Object.entries(R.cz).sort((a,b)=>b[1]-a[1]);
+  const kpi=(l,v,s)=>`<div class="kpi" style="border-inline-start:3px solid ${c}"><div class="n" style="color:${c}">${v}</div><div class="l">${l}${s?`<br><span style="opacity:.75">${s}</span>`:""}</div></div>`;
+  const lbl=R.days.map(d=>jal(d).slice(5));
+  return `${repChips()}
+  <div class="card" style="border-inline-start:4px solid ${c}"><h3 style="border-color:${c}">کمپرسی و تریلی — ${jal(f)} تا ${jal(t)}${secTag("dump")}</h3>
+   <div class="kpis">
+    ${kpi("سرویس مصالح",fa(R.tot.n),`نُرم بازه: ${fa(R.tot.norm)} • تحقق ${fa(R.fill)}٪`)}
+    ${kpi("تناژ حمل",fa(R.tot.tons)+" تن","")}
+    ${kpi("گازوئیل",fa(R.tot.lit)+" لیتر",R.lpn?`${f1(R.lpn)} لیتر هر سرویس`:"")}
+    ${kpi("هزینه‌ی ثبت‌شده",fa(R.tot.cost)+" تومان","سوخت و توقف")}
+    ${kpi("خواب خرابی",f1(R.tot.badMin/60)+" ساعت",`کل توقف ${f1(R.tot.min/60)} ساعت`)}
+    ${kpi("خرابی",fa(R.tot.ft),R.tot.open?`${fa(R.tot.open)} باز`:"همه رفع شده")}
+   </div>
+   <div class="note">نُرم هر دستگاه ${fa(normOf(R.M[0])||4)} سرویس در هر روز کاری است و جمعه‌ها معاف‌اند (${fa(R.work)} روز کاری در این بازه). هر عددی که اینجا می‌بینی از رکورد ثبت‌شده می‌آید؛ موردی که در صف تأیید مانده شمرده نشده.</div>
+  </div>
+  <div class="card"><h3>سرویس روزانه</h3>${chart("bar",lbl,R.perDay,c)}
+   <div class="m">میانگین ${f1(R.perDay.reduce((a,b)=>a+b,0)/(R.days.length||1))} سرویس در روز</div></div>
+  <div class="card"><h3>ساعت توقف روزانه</h3>${chart("line",lbl,R.stopDay,"#c0392b")}</div>
+  <div class="card"><h3>گازوئیل روزانه (لیتر)</h3>${chart("bar",lbl,R.litDay,"#b45309")}</div>
+  <div class="card"><h3>سرویس هر دستگاه در برابر نُرم</h3>
+   ${chart("bar",R.rows.map(x=>String(x.m.name).replace(/^(کمپرسی|کمپرسی تریلی)\s*/,"")),R.rows.map(x=>x.n),c)}
+   ${tbl(["دستگاه","سرویس","نُرم","تحقق","تناژ","لیتر","لیتر/سرویس","توقف (ساعت)","خواب خرابی","آماده‌به‌کاری","خرابی","کم‌کاری"],
+     R.rows.map(x=>[`<span style="color:${c}">${esc(x.m.name)}</span>`,fa(x.n),x.norm?fa(x.norm):"—",
+      x.norm?(x.n>=x.norm?`<b style="color:var(--ok)">${fa(Math.round(x.n*100/x.norm))}٪</b>`:bad(fa(Math.round(x.n*100/x.norm))+"٪",true)):"—",
+      x.tons?fa(x.tons):"—",x.lit?fa(x.lit):"—",x.lpn?f1(x.lpn):"—",x.min?f1(x.min/60):"—",x.badMin?f1(x.badMin/60):"—",
+      fa(x.av)+"٪",x.ft?fa(x.ft):"۰",x.sf?(x.sfMinus?bad(fa(x.sf),true):fa(x.sf)):"۰"]))}
+   <div class="note">آماده‌به‌کاری = زمان بازه منهای خواب خرابی، تقسیم بر زمان بازه. توقف برنامه‌دار (روغن، معاینه، کارواش) در آن حساب نشده.</div></div>
+  ${CZ.length?`<div class="card"><h3>علت توقف‌ها</h3>${chart("bar",CZ.map(q=>q[0]),CZ.map(q=>+(q[1]/60).toFixed(1)),"#7c3aed")}
+   ${tbl(["علت","ساعت","سهم","نوع"],CZ.map(q=>[esc(q[0]),f1(q[1]/60),fa(Math.round(q[1]*100/(R.tot.min||1)))+"٪",BADC.has(q[0])?bad("خرابی",true):"برنامه‌دار"]))}</div>`:""}
+  ${(()=>{const D={}; for(const x of R.SC){const k=x.driver||cName(x.contactId)||"ناشناس"; const o=D[k]||(D[k]={n:0,m:0}); o.n++; if(+x.minus) o.m++;}
+    const L=Object.entries(D).sort((a,b)=>b[1].n-a[1].n);
+    return L.length?`<div class="card"><h3>کم‌کاری رانندگان</h3>${tbl(["راننده","روز کم‌کاری","با امتیاز منفی"],L.map(q=>[esc(q[0]),fa(q[1].n),q[1].m?bad(fa(q[1].m),true):"۰"]))}
+     <div class="note">کم‌کاری با علت موجه (خرابی، سوخت‌گیری، مرخصی) امتیاز منفی ندارد.</div></div>`:"";})()}
+  ${(()=>{const N=dumpNotes(R); return N.length?`<div class="card" style="border-inline-start:4px solid ${c}"><h3 style="border-color:${c}">تحلیل بازه</h3>
+    ${N.map(x=>`<div class="item"><div class="t" style="font-weight:400">${x}</div></div>`).join("")}
+    <div class="row" style="margin-top:8px"><button class="ghost" id="dumpAi">تحلیل و پیشنهاد با دستیار</button><button class="ghost" id="dumpHtml">خروجی گزارش</button></div>
+    ${LS.get("dumpAi","")?`<div class="note" style="white-space:pre-wrap;margin-top:8px">${esc(LS.get("dumpAi",""))}</div>`:""}</div>`:"";})()}`;
+}
+function vRep(){const sub={edit:vEdit,sum:vRepSum,dump:vDumpRep,cmp:vCmp,kpi:vKpi,rel:vRel,exp:vExp,exc:vExc,cost:vCost,recon:vRecon,ops:vOps,pump:vPump,parts:vParts,ret:vRet}[rsub]||vRepSum;
   return `<div class="chips" style="margin:0 0 12px">${RSUBS.map(([k,n])=>`<button class="chip ${k===rsub?"on":""}" data-rsub="${k}">${n}</button>`).join("")}</div>${sub()}`;}
 function vCmp(){const cur=monthRange(0), pv=monthRange(-1), t=todayISO(), el=days(t,cur.from)+1;
   const pTo=cmpSame?(addDays(pv.from,el-1)<pv.to?addDays(pv.from,el-1):pv.to):pv.to;
@@ -3715,6 +3806,30 @@ document.addEventListener("click",async e=>{
       await lexLearn(cur,cur.type); await caseTouch(cur); await verifRun(cur); } return; }
   if(b.dataset.segign){ const s=S.smsSeg.find(y=>y.id===b.dataset.segign); if(!s) return;
     await save("smsSeg",Object.assign({},s,{state:"ignored",status:"archived"})); if(s.kind==="rep") await lexLearn(s,"greet"); return; }
+  if(b.id==="dumpAi"){ if(!AI_ON()) return alert("اول در تب تنظیمات آدرس سرور دستیار و رمز اپ را وارد کن.");
+    b.disabled=true; b.textContent="در حال تحلیل…"; const {f,t}=repRange(), R=dumpRep(f,t);
+    const data={بازه:`${jal(f)} تا ${jal(t)}`,روز_کاری:R.work,جمع:{سرویس:R.tot.n,نُرم:R.tot.norm,تحقق_درصد:R.fill,تناژ:R.tot.tons,
+      لیتر:R.tot.lit,لیتر_هر_سرویس:R.lpn,هزینه_تومان:R.tot.cost,ساعت_توقف:+(R.tot.min/60).toFixed(1),ساعت_خواب_خرابی:+(R.tot.badMin/60).toFixed(1),
+      خرابی:R.tot.ft,خرابی_باز:R.tot.open,روز_کم‌کاری:R.tot.sf},
+      دستگاه_ها:R.rows.map(x=>({نام:x.m.name,سرویس:x.n,نُرم:x.norm,لیتر:x.lit,لیتر_هر_سرویس:x.lpn,ساعت_توقف:+(x.min/60).toFixed(1),
+        ساعت_خواب_خرابی:+(x.badMin/60).toFixed(1),آماده_به_کاری:x.av,خرابی:x.ft,کم‌کاری:x.sf})),
+      علت_توقف:Object.entries(R.cz).map(q=>({علت:q[0],ساعت:+(q[1]/60).toFixed(1)}))};
+    try{ const txt=await callClaude(`${ROLE}\nاین آمار واقعی کمپرسی‌ها و کمپرسی‌تریلی‌های کارخانه است. یک تحلیل مدیریتی فارسی در حداکثر ۸ بند کوتاه بنویس: وضعیت تحقق نُرم، دستگاه‌های مشکل‌دار، الگوی مصرف سوخت، سهم خواب خرابی، و سه پیشنهاد اجرایی مشخص.\nهیچ عددی ننویس که در داده نیست. اگر چیزی در داده نیست بنویس «ثبت نشده».\nداده: ${JSON.stringify(data)}`);
+      LS.set("dumpAi",txt); render(); }catch(e){ alert("تحلیل ناموفق بود: "+(e.message||e)); b.disabled=false; }
+    return; }
+  if(b.id==="dumpHtml"){ const {f,t}=repRange(), R=dumpRep(f,t);
+    const h=`<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><title>گزارش کمپرسی ${jal(f)} تا ${jal(t)}</title>
+<style>body{font-family:Tahoma,sans-serif;padding:16px;color:#17202b}h1{font-size:17px}h2{font-size:14px;border-inline-start:4px solid ${secC("dump")};padding-inline-start:8px}
+table{border-collapse:collapse;width:100%;font-size:12px;margin:8px 0}td,th{border:1px solid #ccc;padding:5px;text-align:center}th{background:#f1f5f9}.n{color:#555;font-size:11px}</style>
+<h1>گزارش کمپرسی و کمپرسی تریلی — ${jal(f)} تا ${jal(t)}</h1>
+<p>سرویس: ${fa(R.tot.n)} از نُرم ${fa(R.tot.norm)} (${fa(R.fill)}٪) • تناژ ${fa(R.tot.tons)} تن • گازوئیل ${fa(R.tot.lit)} لیتر • خواب خرابی ${f1(R.tot.badMin/60)} ساعت • ${fa(R.tot.ft)} خرابی</p>
+<h2>هر دستگاه</h2><table><tr><th>دستگاه</th><th>سرویس</th><th>نُرم</th><th>لیتر</th><th>لیتر/سرویس</th><th>توقف</th><th>خواب خرابی</th><th>آماده‌به‌کاری</th><th>خرابی</th></tr>
+${R.rows.map(x=>`<tr><td>${esc(x.m.name)}</td><td>${fa(x.n)}</td><td>${fa(x.norm)}</td><td>${fa(x.lit)}</td><td>${f1(x.lpn)}</td><td>${f1(x.min/60)}</td><td>${f1(x.badMin/60)}</td><td>${fa(x.av)}٪</td><td>${fa(x.ft)}</td></tr>`).join("")}</table>
+<h2>علت توقف‌ها</h2><table><tr><th>علت</th><th>ساعت</th><th>سهم</th></tr>${Object.entries(R.cz).sort((a,b)=>b[1]-a[1]).map(q=>`<tr><td>${esc(q[0])}</td><td>${f1(q[1]/60)}</td><td>${fa(Math.round(q[1]*100/(R.tot.min||1)))}٪</td></tr>`).join("")}</table>
+<h2>تحلیل</h2><ul>${dumpNotes(R).map(x=>`<li>${x}</li>`).join("")}</ul>
+${LS.get("dumpAi","")?`<h2>تحلیل دستیار</h2><p style="white-space:pre-wrap">${esc(LS.get("dumpAi",""))}</p>`:""}
+<p class="n">ساخته‌شده با دستیار سبحان بتن • ${jal(todayISO())}</p></html>`;
+    await saveShare(`گزارش-کمپرسی-${toEn(jal(f)).replace(/\//g,"-")}.html`,new TextEncoder().encode(h),"text/html"); return; }
   if(b.dataset.dumpw){ LS.set("dumpWin",+b.dataset.dumpw); render(); return; }
   if(b.id==="seedB"){ b.disabled=true; await seedBatch(true); b.disabled=false; return; }
   if(b.id==="seedD"){ b.disabled=true; await seedDump(true); b.disabled=false; return; }
@@ -3981,6 +4096,13 @@ const SK={
    meta:[],
    cols:[{k:"m",l:"کمپرسی / تریلی",t:"mach:کمپرسی,کمپرسی تریلی"},{k:"mine",l:"معدن",t:"text",dl:"mines"},{k:"mat",l:"مصالح",t:"sel",o:["شن","ماسه","نخاله","سایر"]},
      {k:"n",l:"تعداد سرویس",t:"num"},{k:"bill",l:"شماره بارنامه",t:"text"},{k:"tons",l:"تناژ (تن یا کیلو)",t:"num"},{k:"cause",l:"علت کم‌کاری",t:"sel",o:HAUL_CAUSES},{k:"note",l:"توضیح",t:"text"}]},
+ dump:{t:"ثبت عملکرد کمپرسی و تریلی",ic:"🚚",lag:1,multi:0,hint:"برای هر دستگاه یک ردیف: سرویس، سوخت، توقف و کیلومتر — جدا از بچینگ",
+   meta:[{k:"shift",l:"دوره",t:"sel",o:["۲۴ ساعت","شیفت روز","شیفت شب"]}],
+   cols:[{k:"m",l:"کمپرسی / تریلی",t:"mach:کمپرسی,کمپرسی تریلی"},{k:"drv",l:"راننده",t:"con"},
+     {k:"n",l:"سرویس معدن",t:"num"},{k:"mine",l:"معدن",t:"text",dl:"mines"},{k:"tons",l:"تناژ (تن یا کیلو)",t:"num"},
+     {k:"km",l:"کیلومتر فعلی",t:"num"},{k:"lit",l:"گازوئیل (لیتر)",t:"num"},{k:"fcost",l:"مبلغ سوخت (تومان)",t:"num"},{k:"stat",l:"جایگاه سوخت",t:"text"},
+     {k:"smin",l:"توقف (دقیقه)",t:"num"},{k:"scause",l:"علت توقف",t:"sel",o:DCAUSES},{k:"scost",l:"هزینه توقف (تومان)",t:"num"},
+     {k:"cause",l:"علت کم‌کاری",t:"sel",o:HAUL_CAUSES},{k:"note",l:"توضیح / تعمیر",t:"area"}]},
  project:{t:"آمار پروژه‌ها (پمپ و میکسر)",ic:"🏗️",lag:1,multi:0,hint:"پمپاژهای ۲۴ ساعت گذشته — فایل اکسل پروژه‌ها از تب «ورود از فایل»",
    meta:[],
    cols:[{k:"cust",l:"مشتری",t:"text",dl:"custs"},{k:"sec",l:"مقطع",t:"sel",o:[""].concat(typeof SECTS!=="undefined"?SECTS:["فونداسیون","دیوار","ستون","سقف","کف","سایر"])},{k:"m3",l:"متراژ (م³)",t:"num"},
@@ -4042,7 +4164,7 @@ function batchRow(r){ let kg=tdN(r.kg), m3=tdN(r.m3), sw=false;
   return {kg,m3,tons,sw,bad:dens&&(dens<2.0||dens>2.75)?dens:0}; }
 
 /* رکوردهایی که از هر برگه ساخته می‌شوند */
-const DER_COLS=["trips","opprod","silos","counts","faults","jobs","att","washes","fuel","pumpjobs","scores","log"];
+const DER_COLS=["trips","opprod","silos","counts","faults","jobs","att","washes","fuel","pumpjobs","scores","log","stops"];
 const DERIVE={
  haul(sh){ const d=sh.date, out={trips:[],scores:[]}, by={};
    sh.rows.forEach((r,i)=>{ const m=tdMach(r.m,HAULT); if(!m) return; const n=Math.round(tdN(r.n)); const tons=tdKg(r.tons);
@@ -4054,6 +4176,24 @@ const DERIVE={
      const c=S.contacts.find(c=>c.machineId===id&&c.active!==false), cause=g.cause||"";
      out.scores.push({id:`sh_${sh.id}_sf_${id}`,kind:"shortfall",date:d,machineId:id,contactId:c?c.id:"",driver:tdDriverOf(g.m),norm:nrm,done:g.done,
        cause,minus:sfMinus(cause)?1:0,fromT:"",toT:"",min:0,notes:g.note||"از بارنامه"}); }
+   return out; },
+ dump(sh){ const d=sh.date, out={trips:[],fuel:[],stops:[],log:[],scores:[]};
+   sh.rows.forEach((r,i)=>{ const m=tdMach(r.m,HAULT); if(!m) return;
+     const n=Math.round(tdN(r.n)), tons=tdKg(r.tons), c=tdCon(r.drv), drv=(c&&c.name)||tdDriverOf(m);
+     for(let k=0;k<n;k++) out.trips.push({id:`sh_${sh.id}_t${i}_${k}`,date:d,machineId:m.id,driver:drv,site:r.mine||"",kind:"مصالح",
+       material:"",tons:n?+(tons/n).toFixed(2):0,volume:0,stage:4,src:"sheet",sec:"dump"});
+     const lit=tdN(r.lit);
+     if(lit>0) out.fuel.push({id:`sh_${sh.id}_f${i}`,machineId:m.id,date:d,liters:lit,usage:tdN(r.km)||mUsage(m),cost:tdN(r.fcost),
+       station:r.stat||"",min:0,fromT:"",toT:"",src:"sheet",driver:drv,sec:"dump",notes:r.note||""});
+     const smin=tdN(r.smin);
+     if(smin>0) out.stops.push({id:`sh_${sh.id}_s${i}`,date:d,min:smin,cat:r.scause||"سایر",machineId:m.id,cost:tdN(r.scost),
+       sec:"dump",notes:(r.scause?r.scause+" — ":"")+(r.note||"از فرم عملکرد")});
+     const km=tdN(r.km);
+     if(km>0) out.log.push({id:`sh_${sh.id}_k${i}`,machineId:m.id,date:d,title:"اعلام کیلومتر از فرم عملکرد",kind:"km",usage:km,cost:0,sec:"dump",notes:""});
+     const nrm=normOf(m);
+     if(nrm>0&&n<nrm&&!isFri(d)&&r.cause!=="جمعه / تعطیل")
+       out.scores.push({id:`sh_${sh.id}_sf${i}`,kind:"shortfall",date:d,machineId:m.id,contactId:c?c.id:"",driver:drv,norm:nrm,done:n,
+         cause:r.cause||"",minus:sfMinus(r.cause||"")?1:0,fromT:"",toT:"",min:0,notes:r.note||"از فرم عملکرد"}); });
    return out; },
  project(sh){ return {pumpjobs:sh.rows.filter(r=>tdN(r.m3)>0).map((r,i)=>{ const p=tdMach(r.pump,PUMPT), tr=tdMach(r.tr), c=tdCon(r.drv);
    return {id:`sh_${sh.id}_${i}`,date:sh.date,customer:r.cust||"",section:r.sec||"",m3:tdN(r.m3),grade:r.grade||"",pumpId:p?p.id:"",pump:p?p.name:(r.pump||""),
@@ -4141,6 +4281,8 @@ async function shDelete(id){ const sh=S.sheets.find(x=>x.id===id); if(!sh) retur
 /* ---------- خلاصه‌ی هر برگه ---------- */
 function shSum(sh){ const R=sh.rows||[], M=sh.meta||{};
   switch(sh.kind){
+   case "dump": { const n=sumBy(R,r=>tdN(r.n)), l=sumBy(R,r=>tdN(r.lit)), sm=sumBy(R,r=>tdN(r.smin));
+     return `${fa(R.filter(r=>r.m).length)} دستگاه • ${fa(n)} سرویس${l?` • ${fa(l)} لیتر`:""}${sm?` • ${f1(sm/60)} ساعت توقف`:""}`; }
    case "haul": { const n=sumBy(R,r=>tdN(r.n)), t=sumBy(R,r=>tdKg(r.tons)); return `${fa(n)} سرویس • ${fa(+t.toFixed(1))} تن • ${fa(new Set(R.filter(r=>r.m).map(r=>r.m)).size)} دستگاه`; }
    case "project": return `${fa(R.filter(r=>tdN(r.m3)>0).length)} پروژه • ${fa(+sumBy(R,r=>tdN(r.m3)).toFixed(1))} م³`;
    case "batch": { const B=R.map(batchRow).filter(b=>b.m3>0); return `دستگاه ${M.plant||"?"} • ${M.shift||""} • ${esc((tdCon(M.op)||{}).name||M.op||"اپراتور؟")} • ${fa(B.length)} بار • ${fa(+sumBy(B,b=>b.m3).toFixed(1))} م³ • ${fa(+sumBy(B,b=>b.tons).toFixed(1))} تن`; }
