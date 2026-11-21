@@ -132,6 +132,15 @@ th{color:var(--muted);font-weight:500}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .lock{position:fixed;inset:0;z-index:100;background:var(--bg);display:grid;place-items:center;padding:20px}
 .ulist{display:flex;flex-direction:column;gap:7px;max-height:56vh;overflow:auto}
+.tyrewrap{display:flex;flex-direction:column;gap:6px;align-items:center;margin:8px 0;padding:10px 4px;border:1px solid var(--line);border-radius:12px;background:var(--card2,transparent)}
+.tyunit{font-size:12px;color:var(--muted);margin-top:4px}
+.tyax{display:flex;align-items:center;gap:4px;width:100%;justify-content:center}
+.tyside{display:flex;gap:4px}
+.tybar{flex:0 0 86px;height:26px;border-radius:6px;background:var(--line);display:grid;place-items:center}
+.tybar span{font-size:10px;color:var(--muted);white-space:nowrap}
+.tyre{width:44px;display:flex;flex-direction:column;align-items:center;gap:1px;border:2px solid var(--line);border-radius:7px;padding:3px 1px}
+.tyre input{width:100%;text-align:center;padding:2px;font-size:14px;border:0;background:transparent;min-height:0}
+.tyre span{font-size:9px;color:var(--muted);line-height:1}
 body.ro main button.primary,body.ro main button.bad,body.ro main button.accentb{opacity:.45}
 body.ro main input,body.ro main select,body.ro main textarea{background:var(--card2,transparent)}
 .lockbox{width:100%;max-width:300px}
@@ -228,9 +237,9 @@ const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="1.0.16";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
-const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum","users","ulog"];
-const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[],users:[],ulog:[]};
+const APP_BUILD="1.0.17";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
+const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum","users","ulog","tcheck"];
+const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[],users:[],ulog:[],tcheck:[]};
 let DB=null, SAMPLE=null, ready=false;
 
 const LS={
@@ -985,8 +994,13 @@ function fuelMCard(m){const rates=fuelRates(), fs=S.fuel.filter(f=>f.machineId==
 function tireCard(m){
   const act=S.tires.filter(t=>t.machineId===m.id&&t.status!=="removed"), old=S.tires.filter(t=>t.machineId===m.id&&t.status==="removed").sort((a,b)=>(b.removedDate||"").localeCompare(a.removedDate||""));
   const life=t=>(t.status==="removed"?+t.removedUsage:mUsage(m))-(+t.installUsage||0), lives=old.map(life).filter(x=>x>0);
+  const tst=tireStats(m.id);
   return `<div class="card"><h3>لاستیک‌ها</h3>
-   ${lives.length?`<div class="note">میانگین عمر لاستیک‌های تعویض‌شده: ${fa(Math.round(avg(lives)))} ${unitName(m)}</div>`:""}
+   <button class="tdt ${tst&&tst.n?(tst.min<tireLow()?"miss":"ok"):""}" data-ty="open" data-id="${m.id}" style="width:100%">
+     <span class="ic">🛞</span><span class="tx"><b>وضعیت و درصد لاستیک‌ها</b>
+     <small>${tst&&tst.n?`میانگین ${fa(tst.avg)}٪ • کمترین ${fa(tst.min)}٪ (${esc(tst.minLabel)}) • ${jal(tst.rec.date)}`:"هنوز ثبت نشده"}</small></span>
+     <span class="tag ${tst&&tst.n?(tst.min<tireLow()?"due":"ok"):"due"}">${tst&&tst.n?(tst.min<tireLow()?"رسیدگی":"سالم"):"ثبت کن"}</span></button>
+   ${lives.length?`<div class="note" style="margin-top:8px">میانگین عمر لاستیک‌های تعویض‌شده: ${fa(Math.round(avg(lives)))} ${unitName(m)}</div>`:""}
    ${act.length?act.map(t=>`<div class="item"><div class="t">${esc(t.pos)}<span class="tag">${fa(life(t))} ${unitName(m)} کارکرد</span></div>
      <div class="m">${esc(t.brand||"")}${t.serial?" • سریال "+esc(t.serial):""} • نصب ${jal(t.installDate)}</div>
      <div class="row" style="margin-top:7px"><button class="ghost" data-tireoff="${t.id}">تعویض شد</button><button class="danger" data-tiredel="${t.id}">حذف</button></div></div>`).join("")
@@ -2385,7 +2399,9 @@ const UROLES={
   manager: {n:"مدیر کارخانه — فقط مشاهده",  tabs:"*",                                  secs:"*",        forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"dash"},
   boss:    {n:"سرپرست کارخانه — فقط مشاهده", tabs:"*",                                  secs:"*",        forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"dash"},
   chief:   {n:"سرشوفر کمپرسی و تریلی",      tabs:["my","dash","fleet","mach","perf","rep"], secs:["dump"], forms:["drep"], w:1,e:1,d:0,gps:1,own:0,ownW:1,set:0,pin:1,home:"fleet"},
+  mixchief:{n:"سرشوفر میکسرها",             tabs:["my","dash","fleet","mach","perf","rep"], secs:["mixer"], forms:["mrep"], w:1,e:1,d:0,gps:1,own:0,ownW:1,set:0,pin:1,home:"fleet"},
   driver:  {n:"راننده کمپرسی / تریلی",      tabs:["my"],                               secs:["dump"],   forms:["drep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"},
+  mixdriver:{n:"راننده میکسر",              tabs:["my"],                               secs:["mixer"],  forms:["mrep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"},
   operator:{n:"اوپراتور بچینگ",             tabs:["my"],                               secs:["batch"],  forms:["orep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"}
 };
 const URK=Object.keys(UROLES);
@@ -2905,7 +2921,7 @@ function vRepSum(){
 
 /* ---------- فاز ۴: تحلیل و گزارش ---------- */
 let rsub="sum", relDays=90, cmpSame=true;
-const RSUBS=[["exc","استثنا و جاافتادگی"],["edit","اصلاح رویدادها"],["sum","خلاصه و نمودار"],["cost","بهای تمام‌شده"],["dump","کمپرسی و تریلی"],["month","ماه دستی"],["recon","تطبیق حمل و مصالح"],["ops","اوپراتور و سیلو"],["pump","پمپ"],["parts","قطعات و خرید"],["ret","بتن برگشتی"],["cmp","مقایسه ماهانه"],["kpi","شاخص‌ها"],["rel","قابلیت اطمینان و هزینه"],["exp","خروجی PDF و اکسل"]];
+const RSUBS=[["exc","استثنا و جاافتادگی"],["edit","اصلاح رویدادها"],["sum","خلاصه و نمودار"],["cost","بهای تمام‌شده"],["dump","کمپرسی و تریلی"],["month","ماه دستی"],["recon","تطبیق حمل و مصالح"],["ops","اوپراتور و سیلو"],["pump","پمپ"],["parts","قطعات و خرید"],["ret","بتن برگشتی"],["cmp","مقایسه ماهانه"],["tire","وضعیت لاستیک"],["kpi","شاخص‌ها"],["rel","قابلیت اطمینان و هزینه"],["exp","خروجی PDF و اکسل"]];
 const cleanMd=t=>String(t||"").replace(/\*\*(.+?)\*\*/g,"$1").replace(/^#{1,6}\s*/gm,"").replace(/^\s*[-*]\s+/gm,"• ");
 const inR=(d,f,t)=>!!d&&d>=f&&d<=t;
 const sumBy=(a,fn)=>a.reduce((x,y)=>x+(+fn(y)||0),0);
@@ -3495,7 +3511,7 @@ function vDumpRep(){ const {f,t}=repRange(), R=dumpRep(f,t), c=secC("dump");
     <div class="row" style="margin-top:8px"><button class="ghost" id="dumpAi">تحلیل و پیشنهاد با دستیار</button><button class="ghost" id="dumpHtml">خروجی گزارش</button></div>
     ${LS.get("dumpAi","")?`<div class="note" style="white-space:pre-wrap;margin-top:8px">${esc(LS.get("dumpAi",""))}</div>`:""}</div>`:"";})()}`;
 }
-function vRep(){const sub={edit:vEdit,sum:vRepSum,month:vMonth,dump:vDumpRep,cmp:vCmp,kpi:vKpi,rel:vRel,exp:vExp,exc:vExc,cost:vCost,recon:vRecon,ops:vOps,pump:vPump,parts:vParts,ret:vRet}[rsub]||vRepSum;
+function vRep(){const sub={edit:vEdit,sum:vRepSum,month:vMonth,dump:vDumpRep,cmp:vCmp,kpi:vKpi,rel:vRel,exp:vExp,exc:vExc,cost:vCost,recon:vRecon,ops:vOps,pump:vPump,parts:vParts,ret:vRet,tire:vTireRep}[rsub]||vRepSum;
   return `<div class="chips" style="margin:0 0 12px">${RSUBS.map(([k,n])=>`<button class="chip ${k===rsub?"on":""}" data-rsub="${k}">${n}</button>`).join("")}</div>${sub()}`;}
 function vCmp(){const cur=monthRange(0), pv=monthRange(-1), t=todayISO(), el=days(t,cur.from)+1;
   const pTo=cmpSame?(addDays(pv.from,el-1)<pv.to?addDays(pv.from,el-1):pv.to):pv.to;
@@ -4582,6 +4598,17 @@ const SK={
    cols:[{k:"loads",l:"تعداد بارگیری",t:"num"},{k:"m3",l:"حجم تولید (م³)",t:"num"},{k:"tons",l:"تناژ (تن یا کیلو)",t:"num"},
      {k:"smin",l:"توقف بچینگ (دقیقه)",t:"num"},{k:"scause",l:"علت توقف",t:"sel",o:DCAUSES},
      {k:"note",l:"مشکل یا توضیح",t:"area"}]},
+ mrep:{t:"گزارش روزانه‌ی من (میکسر)",ic:"📝",lag:1,multi:0,mine:1,
+   hint:"کارکرد امروز خودت؛ هزینه و عیار لازم نیست",
+   meta:[{k:"shift",l:"شیفت",t:"sel",o:["روز","شب","۲۴ ساعت"]}],
+   fixed:()=>[{m:(myMachList()[0]||{}).code||(myMachList()[0]||{}).name||""}],
+   rowLabel:r=>{ const m=tdMach(r.m,["میکسر"]); return m?esc(m.name):"میکسر من"; },
+   cols:[{k:"m",l:"دستگاه",t:"mach:میکسر"},
+     {k:"n",l:"تعداد سرویس",t:"num"},{k:"m3",l:"مجموع متراژ (م³)",t:"num"},
+     {k:"site",l:"پروژه / مقصد",t:"text",dl:"sites"},
+     {k:"km",l:"کیلومتر فعلی",t:"num"},{k:"lit",l:"گازوئیل (لیتر)",t:"num"},{k:"stat",l:"جایگاه سوخت",t:"text",dl:"stations"},
+     {k:"smin",l:"توقف (دقیقه)",t:"num"},{k:"scause",l:"علت توقف",t:"sel",o:DCAUSES},
+     {k:"note",l:"مشکل یا توضیح",t:"area"}]},
  dump:{t:"ثبت عملکرد کمپرسی و تریلی",ic:"🚚",lag:1,multi:0,hint:"برای هر دستگاه یک ردیف: سرویس، سوخت، توقف و کیلومتر — جدا از بچینگ",
    meta:[{k:"shift",l:"دوره",t:"sel",o:["۲۴ ساعت","شیفت روز","شیفت شب"]}],
    cols:[{k:"m",l:"کمپرسی / تریلی",t:"mach:کمپرسی,کمپرسی تریلی"},{k:"drv",l:"راننده",t:"con"},
@@ -4658,7 +4685,7 @@ const SK={
    meta:[],
    cols:[{k:"m",l:"دستگاه",t:"mach"},{k:"exp",l:"اعتبار تا",t:"jd"},{k:"note",l:"توضیح",t:"text"}]}
 };
-const SK_ORDER=["mplant","mmach","mprod","mpump","mstaff","haul","dump","project","batch","silo","fault","fuelcard","wash","yard","waste","attend","leave","imix","ipump","ibatch","saye","drep","orep"];
+const SK_ORDER=["mplant","mmach","mprod","mpump","mstaff","haul","dump","project","batch","silo","fault","fuelcard","wash","yard","waste","attend","leave","imix","ipump","ibatch","saye","drep","orep","mrep"];
 /* کاشی‌های فرم شخصی در صفحه‌ی «امروز» ادمین نمی‌آیند؛ جای خودشان تب «گزارش من» است */
 const SK_TODAY=SK_ORDER.filter(k=>!SK[k].mine);
 if(typeof DOCS!=="undefined"&&!DOCS.some(d=>d[0]==="sayeDue")) DOCS.push(["sayeDue","مجوز سامانه سایه"]);
@@ -4751,6 +4778,21 @@ const DERIVE={
      if(nrm>0&&n<nrm&&!isFri(d)&&r.cause!=="جمعه / تعطیل")
        out.scores.push({id:`sh_${sh.id}_sf${i}`,kind:"shortfall",date:d,machineId:m.id,contactId:(S.users.find(u=>u.id===sh.by)||{}).cid||"",
          driver:drv,norm:nrm,done:n,cause:r.cause||"",minus:sfMinus(r.cause||"")?1:0,fromT:"",toT:"",min:0,notes:r.note||"از گزارش راننده"}); });
+   return out; },
+ /* گزارش شخصی راننده‌ی میکسر: سرویس و متراژ بتن، بدون عیار و هزینه */
+ mrep(sh){ const d=sh.date, out={trips:[],fuel:[],stops:[],log:[]};
+   sh.rows.forEach((r,i)=>{ const m=tdMach(r.m,["میکسر"]); if(!m) return;
+     const n=Math.round(tdN(r.n)), drv=tdDriverOf(m)||sh.byName||"", vol=tdN(r.m3), per=n>0?+(vol/n).toFixed(2):0;
+     for(let k=0;k<n;k++) out.trips.push({id:`sh_${sh.id}_t${i}_${k}`,date:d,machineId:m.id,driver:drv,site:r.site||"",kind:"بتن",
+       material:"",tons:0,volume:per,stage:4,src:"sheet",sec:"mixer"});
+     const lit=tdN(r.lit);
+     if(lit>0) out.fuel.push({id:`sh_${sh.id}_f${i}`,machineId:m.id,date:d,liters:lit,usage:tdN(r.km)||mUsage(m),cost:0,
+       station:r.stat||"",min:0,fromT:"",toT:"",src:"sheet",driver:drv,sec:"mixer",notes:r.note||""});
+     const smin=tdN(r.smin);
+     if(smin>0) out.stops.push({id:`sh_${sh.id}_s${i}`,date:d,min:smin,cat:r.scause||"سایر",machineId:m.id,cost:0,
+       sec:"mixer",notes:(r.scause?r.scause+" — ":"")+(r.note||"از گزارش راننده")});
+     const km=tdN(r.km);
+     if(km>0) out.log.push({id:`sh_${sh.id}_k${i}`,machineId:m.id,date:d,title:"اعلام کیلومتر از گزارش راننده",kind:"km",usage:km,cost:0,sec:"mixer",notes:""}); });
    return out; },
  /* گزارش شخصی اوپراتور بچینگ: خلاصه‌ی شیفت، نه ریز بارگیری‌ها */
  orep(sh){ const d=sh.date, M=sh.meta||{}, out={opprod:[],stops:[]};
@@ -4864,6 +4906,8 @@ function shSum(sh){ const R=sh.rows||[], M=sh.meta||{};
    case "mprod": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.op||r.mc).length)} ردیف • ${fa(sumBy(R,r=>tdN(r.m3)))} م³`;
    case "mpump": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.p||r.prj).length)} پروژه • ${fa(sumBy(R,r=>tdN(r.m3)))} م³`;
    case "mstaff": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.c).length)} نفر`;
+   case "mrep": { const r=R[0]||{}, m=tdMach(r.m,["میکسر"]), n=tdN(r.n), v=tdN(r.m3), sm=tdN(r.smin);
+     return `${m?esc(m.name):"میکسر؟"} • ${fa(n)} سرویس${v?` • ${fa(v)} م³`:""}${sm?` • ${fa(sm)} دقیقه توقف`:""}`; }
    case "drep": { const r=R[0]||{}, m=tdMach(r.m,HAULT), n=tdN(r.n), l=tdN(r.lit), sm=tdN(r.smin);
      return `${m?esc(m.name):"دستگاه؟"} • ${fa(n)} سرویس${l?` • ${fa(l)} لیتر`:""}${sm?` • ${fa(sm)} دقیقه توقف`:""}`; }
    case "orep": { const r=R[0]||{}, v=tdN(r.m3), ld=Math.round(tdN(r.loads)), sm=tdN(r.smin);
@@ -4906,6 +4950,171 @@ function tdTile(k,d){ const K=SK[k], L=shOf(k,d); let st=L.length?"ok":"miss", i
   if(k==="haul"&&isFri(d)&&!L.length){ st="off"; info="جمعه"; }
   return {st,info}; }
 const TD_ST={ok:["دریافت شد","ok"],part:["ناقص","soon"],miss:["منتظر","due"],warn:["هشدار","due"],off:["تعطیل",""],pre:["پیش از مبدأ",""]};
+/* ---------- وضعیت لاستیک‌ها: شماتیک دوبعدی و درصد هر لاستیک ---------- */
+/* چیدمان محورها برای هر نوع دستگاه. این مقدارهای پیش‌فرض‌اند و از تنظیمات
+   قابل تغییرند؛ برای هر دستگاه هم می‌توان چیدمان اختصاصی گذاشت، چون
+   مدل‌های مختلف یک نوع، تعداد محور متفاوت دارند. */
+const TIRE_DEF={
+  "میکسر":        [{l:"محور جلو",n:2},{l:"محور عقب ۱",n:4},{l:"محور عقب ۲",n:4}],
+  "کمپرسی":       [{l:"محور جلو",n:2},{l:"محور عقب ۱",n:4},{l:"محور عقب ۲",n:4}],
+  "کمپرسی تریلی": [{l:"جلو کشنده",n:2,u:"کشنده"},{l:"عقب کشنده ۱",n:4,u:"کشنده"},{l:"عقب کشنده ۲",n:4,u:"کشنده"},
+                   {l:"تریلر ۱",n:4,u:"تریلر"},{l:"تریلر ۲",n:4,u:"تریلر"},{l:"تریلر ۳",n:4,u:"تریلر"}],
+  "پمپ بتن":      [{l:"محور جلو",n:2},{l:"محور عقب ۱",n:4},{l:"محور عقب ۲",n:4}],
+  "کشنده":        [{l:"محور جلو",n:2},{l:"محور عقب ۱",n:4},{l:"محور عقب ۲",n:4}],
+  "لودر":         [{l:"محور جلو",n:2},{l:"محور عقب",n:2}],
+  "تانکر آب":     [{l:"محور جلو",n:2},{l:"محور عقب ۱",n:4},{l:"محور عقب ۲",n:4}],
+  "سایر":         [{l:"محور جلو",n:2},{l:"محور عقب",n:4}]
+};
+const tireLow=()=>Math.max(1,Math.min(99,+LS.get("tireLow",30)||30));
+function tireLayout(m){
+  if(!m) return [];
+  if(Array.isArray(m.tireL)&&m.tireL.length) return m.tireL;          /* چیدمان اختصاصی دستگاه */
+  const cfg=LS.get("tireL",null);
+  if(cfg&&Array.isArray(cfg[m.type])&&cfg[m.type].length) return cfg[m.type];
+  return TIRE_DEF[m.type]||TIRE_DEF["سایر"];
+}
+/* کد و نام هر جایگاه */
+function tirePos(L){
+  const out=[];
+  L.forEach((ax,i)=>{
+    const side=["L","R"], sn={L:"چپ",R:"راست"};
+    side.forEach(sd=>{
+      if(ax.n<=2) out.push({k:`a${i+1}${sd}`,l:`${ax.l} ${sn[sd]}`,ax:i,sd,pos:"",u:ax.u||""});
+      else { out.push({k:`a${i+1}${sd}o`,l:`${ax.l} ${sn[sd]} بیرونی`,ax:i,sd,pos:"o",u:ax.u||""});
+             out.push({k:`a${i+1}${sd}i`,l:`${ax.l} ${sn[sd]} داخلی`,ax:i,sd,pos:"i",u:ax.u||""}); }
+    });
+  });
+  return out;
+}
+const tireLast=mid=>S.tcheck.filter(x=>x.machineId===mid).sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.at||0)-(a.at||0))[0]||null;
+function tireColor(v){ if(v==null||v==="") return "var(--line)";
+  v=+v; if(v<tireLow()) return "var(--bad)"; if(v<tireLow()+20) return "var(--due)"; return "var(--ok)"; }
+function tireStats(mid){
+  const r=tireLast(mid); if(!r) return null;
+  const m=S.machines.find(x=>x.id===mid), P=tirePos(tireLayout(m));
+  const vals=P.map(p=>({p,v:r.vals&&r.vals[p.k]!=null&&r.vals[p.k]!==""?+r.vals[p.k]:null})).filter(x=>x.v!=null&&!isNaN(x.v));
+  if(!vals.length) return {rec:r,n:0,total:P.length};
+  const nums=vals.map(x=>x.v), worst=vals.slice().sort((a,b)=>a.v-b.v)[0];
+  return {rec:r,n:vals.length,total:P.length,avg:+(nums.reduce((a,b)=>a+b,0)/nums.length).toFixed(1),
+    min:worst.v,minLabel:worst.p.l,low:vals.filter(x=>x.v<tireLow()).length};
+}
+
+/* شماتیک: نمای از بالا. جهت را ثابت نگه می‌داریم (LTR) تا چپ و راست جابه‌جا نشود. */
+function tireSchematic(m,vals,ro){
+  const L=tireLayout(m);
+  if(!L.length) return '<div class="note">چیدمان محور برای این نوع دستگاه تعریف نشده است.</div>';
+  const cell=(p)=>{ const v=vals&&vals[p.k]!=null?vals[p.k]:"";
+    return `<div class="tyre" style="border-color:${tireColor(v)}">
+      <input class="tyin" data-tk="${p.k}" value="${esc(String(v))}" inputmode="numeric" maxlength="3" ${ro?"disabled":""} placeholder="—" title="${esc(p.l)}">
+      <span>${esc(p.pos==="o"?"بیرونی":p.pos==="i"?"داخلی":"")}</span></div>`; };
+  let html='<div class="tyrewrap" dir="ltr">';
+  let unit="";
+  L.forEach((ax,i)=>{
+    if((ax.u||"")!==unit){ unit=ax.u||""; if(unit) html+=`<div class="tyunit">${esc(unit)}</div>`; }
+    const P=tirePos(L).filter(p=>p.ax===i);
+    const left=P.filter(p=>p.sd==="L"), right=P.filter(p=>p.sd==="R");
+    /* بیرونی‌ها لبه‌ی بیرونی، داخلی‌ها کنار شاسی */
+    const lo=left.filter(p=>p.pos!=="i"), li=left.filter(p=>p.pos==="i");
+    const ri=right.filter(p=>p.pos==="i"), ro2=right.filter(p=>p.pos!=="i");
+    html+=`<div class="tyax"><div class="tyside">${lo.map(cell).join("")}${li.map(cell).join("")}</div>
+      <div class="tybar"><span>${esc(ax.l)}</span></div>
+      <div class="tyside">${ri.map(cell).join("")}${ro2.map(cell).join("")}</div></div>`;
+  });
+  html+='</div>';
+  return `<div class="note" style="text-align:center">⬆ جلوی دستگاه</div>${html}`;
+}
+
+function tireModal(mid){
+  const m=S.machines.find(x=>x.id===mid); if(!m) return;
+  const last=tireLast(mid), ro=isRO();
+  showModal(`<div class="tdform"><h3 style="margin:0 0 4px">وضعیت لاستیک — ${esc(m.name)}</h3>
+    <div class="m" style="margin-bottom:6px">${esc(m.type)}${last?` • آخرین ثبت ${jal(last.date)}`:" • هنوز ثبت نشده"}</div>
+    <div class="grid2"><div><label>تاریخ بازدید</label><input id="tyd" class="jd" value="${jal(todayISO())}" data-iso="${todayISO()}"></div>
+      <div><label>درصد سلامت هر لاستیک</label><input value="۰ تا ۱۰۰" disabled></div></div>
+    ${tireSchematic(m,last?last.vals:null,ro)}
+    <label style="margin-top:8px">توضیح</label><input id="tyn" value="${esc(last&&last.note||"")}">
+    <div class="note" id="tyerr" style="margin-top:6px;color:var(--bad)"></div>
+    <div class="row" style="margin-top:10px;gap:6px">
+      ${ro?"":`<button class="primary" data-ty="save" data-id="${m.id}">ذخیره</button>`}
+      <button class="ghost" data-ty="hist" data-id="${m.id}">سابقه</button>
+      <button class="ghost" data-jdclose="1">بستن</button></div></div>`);
+}
+
+function tireHist(mid){
+  const m=S.machines.find(x=>x.id===mid);
+  const L=S.tcheck.filter(x=>x.machineId===mid).sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+  showModal(`<div class="tdform"><h3 style="margin:0 0 6px">سابقه‌ی لاستیک — ${esc(m?m.name:"")}</h3>
+    ${L.length?`<div class="scrollx"><table><thead><tr><th>تاریخ</th><th>میانگین</th><th>کمترین</th><th>زیر حد</th><th>ثبت‌کننده</th></tr></thead><tbody>
+      ${L.map(r=>{ const P=tirePos(tireLayout(m));
+        const v=P.map(p=>r.vals&&r.vals[p.k]!==""&&r.vals[p.k]!=null?+r.vals[p.k]:null).filter(x=>x!=null&&!isNaN(x));
+        const av=v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null, mn=v.length?Math.min.apply(null,v):null;
+        return `<tr><td>${jal(r.date)}</td><td>${av==null?"—":fa(av)+"٪"}</td>
+          <td style="color:${tireColor(mn)}">${mn==null?"—":fa(mn)+"٪"}</td>
+          <td>${fa(v.filter(x=>x<tireLow()).length)}</td><td>${esc(r.byName||"")}</td></tr>`; }).join("")}
+      </tbody></table></div>`:'<div class="empty">سابقه‌ای ثبت نشده.</div>'}
+    <div class="row" style="margin-top:10px"><button class="ghost" data-ty="open" data-id="${mid}">برگشت</button><button class="ghost" data-jdclose="1">بستن</button></div></div>`);
+}
+
+/* ---------- گزارش کل ناوگان ---------- */
+function vTireRep(){
+  const low=tireLow();
+  const L=S.machines.filter(m=>m.status!=="غیرفعال").map(m=>({m,st:tireStats(m.id)}));
+  const has=L.filter(x=>x.st&&x.st.n), none=L.filter(x=>!x.st||!x.st.n);
+  const bySec={}; has.forEach(x=>{ const k=secByType(x.m.type); (bySec[k]=bySec[k]||[]).push(x); });
+  const bad=has.filter(x=>x.st.min<low).sort((a,b)=>a.st.min-b.st.min);
+  const all=has.map(x=>x.st.avg), fleetAvg=all.length?Math.round(all.reduce((a,b)=>a+b,0)/all.length):null;
+  const chartL=SEC_K.filter(k=>bySec[k]), chartV=chartL.map(k=>{
+    const a=bySec[k].map(x=>x.st.avg); return Math.round(a.reduce((x,y)=>x+y,0)/a.length); });
+  return `<div class="card"><h3>وضعیت لاستیک ناوگان</h3>
+     <div class="kpis">
+       <div class="kpi"><b>${fa(has.length)}</b><span>دستگاه ثبت‌شده</span></div>
+       <div class="kpi"><b>${fleetAvg==null?"—":fa(fleetAvg)+"٪"}</b><span>میانگین ناوگان</span></div>
+       <div class="kpi ${bad.length?"bad":""}"><b>${fa(bad.length)}</b><span>دستگاه زیر ${fa(low)}٪</span></div>
+       <div class="kpi"><b>${fa(none.length)}</b><span>بدون ثبت</span></div></div>
+     <div class="note" style="margin-top:8px">درصدها دستی و از روی بازدید ثبت می‌شوند. «زیر حد» یعنی دست‌کم یک لاستیک زیر ${fa(low)}٪ است؛ این آستانه از تنظیمات قابل تغییر است.</div></div>
+   ${chartL.length?`<div class="card"><h3>میانگین هر بخش</h3>${chart("bar",chartL.map(k=>secN(k)),chartV,"#1d4ed8")}</div>`:""}
+   ${bad.length?`<div class="card"><h3>نیازمند رسیدگی</h3>
+     <div class="scrollx"><table><thead><tr><th>دستگاه</th><th>کمترین</th><th>کدام لاستیک</th><th>تعداد زیر حد</th><th>آخرین بازدید</th></tr></thead><tbody>
+     ${bad.map(x=>`<tr><td>${esc(x.m.name)}</td><td style="color:var(--bad)"><b>${fa(x.st.min)}٪</b></td>
+       <td>${esc(x.st.minLabel)}</td><td>${fa(x.st.low)}</td><td>${jal(x.st.rec.date)}</td></tr>`).join("")}
+     </tbody></table></div></div>`:""}
+   ${SEC_K.filter(k=>bySec[k]).map(k=>`<div class="card" style="${secBar(k)}"><h3>${esc(secN(k))}</h3>
+     <div class="scrollx"><table><thead><tr><th>دستگاه</th><th>میانگین</th><th>کمترین</th><th>ثبت‌شده</th><th>تاریخ</th><th></th></tr></thead><tbody>
+     ${bySec[k].sort((a,b)=>a.st.min-b.st.min).map(x=>`<tr><td>${esc(x.m.name)}</td>
+       <td>${fa(x.st.avg)}٪</td><td style="color:${tireColor(x.st.min)}">${fa(x.st.min)}٪</td>
+       <td>${fa(x.st.n)} از ${fa(x.st.total)}</td><td>${jal(x.st.rec.date)}</td>
+       <td><button class="ghost" data-ty="open" data-id="${x.m.id}">باز کردن</button></td></tr>`).join("")}
+     </tbody></table></div></div>`).join("")}
+   ${none.length?`<div class="card"><h3>هنوز ثبت نشده</h3><div class="tdgrid">
+     ${none.map(x=>`<button class="tdt miss" data-ty="open" data-id="${x.m.id}"><span class="ic">🛞</span>
+       <span class="tx"><b>${esc(x.m.name)}</b><small>${esc(x.m.type)}</small></span><span class="tag due">ثبت کن</span></button>`).join("")}
+     </div></div>`:""}`;
+}
+
+document.addEventListener("click",async e=>{
+  const b=e.target.closest&&e.target.closest("[data-ty]"); if(!b) return;
+  const a=b.dataset.ty;
+  if(a==="open"){ tireModal(b.dataset.id); return; }
+  if(a==="hist"){ tireHist(b.dataset.id); return; }
+  if(a==="save"){
+    if(roBlock()) return;
+    const mid=b.dataset.id, m=S.machines.find(x=>x.id===mid); if(!m) return;
+    const d=(document.getElementById("tyd")||{}).dataset, iso=(d&&d.iso)||todayISO();
+    const vals={}; let bad="";
+    [].slice.call(document.querySelectorAll(".tyin")).forEach(i=>{
+      const raw=toEn(i.value||"").trim(); if(!raw) return;
+      const v=+raw;
+      if(isNaN(v)||v<0||v>100){ bad=bad||i.title; return; }
+      vals[i.dataset.tk]=Math.round(v); });
+    if(bad){ const el=document.getElementById("tyerr"); if(el) el.textContent="درصد باید عددی بین ۰ تا ۱۰۰ باشد: "+bad; return; }
+    if(!Object.keys(vals).length){ const el=document.getElementById("tyerr"); if(el) el.textContent="هیچ درصدی وارد نشده است."; return; }
+    const old=S.tcheck.find(x=>x.machineId===mid&&x.date===iso);
+    await save("tcheck",Object.assign({},old||{},{id:old?old.id:uid(),machineId:mid,date:iso,sec:secByType(m.type),
+      vals,note:gv("tyn"),by:meId(),byName:meName(),at:Date.now()}));
+    modalClose(); try{ tdToast("وضعیت لاستیک ثبت شد."); }catch(x){}
+    return; }
+});
+
 /* ---------- پنل کاربران (فقط ادمین) ---------- */
 function uPin4(){ let p; do{ p=String(Math.floor(1000+Math.random()*9000)); }
   while(/^(\d)\1{3}$/.test(p)||["1234","4321","1230","0123"].indexOf(p)>=0); return p; }
@@ -4940,6 +5149,7 @@ function vUsers(){
       return `<div class="item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;${secBar(u.role==="driver"?"dump":u.role==="operator"?"batch":"")}">
         <div><b>${esc(u.name||u.user)}</b>${u.active===false?' <span class="tag bad">غیرفعال</span>':""}${u.must?' <span class="tag due">رمز موقت</span>':""}
           <div class="m">${esc(u.user||"")}${c?" • پرسنل: "+esc(c.name):""}${ms.length?" • "+ms.map(esc).join("، "):""}${u.plant?" • بچینگ "+esc(u.plant):""}</div>
+          ${(u.subs||[]).length?`<div class="m">زیرمجموعه: ${(u.subs||[]).map(id=>esc((S.contacts.find(c=>c.id===id)||{}).name||"")).filter(Boolean).join("، ")}</div>`:""}
           <div class="m">${u.last?"آخرین ورود: "+jal(localISO(new Date(u.last)))+" ساعت "+faNum(new Date(u.last).toTimeString().slice(0,5)):"هنوز وارد نشده"}</div></div>
         <div class="row" style="gap:4px">
           <button class="ghost" data-um="edit" data-id="${u.id}">ویرایش</button>
@@ -4961,8 +5171,18 @@ function vUsers(){
 function uRoleSel(id,v){ return `<select id="${id}">${URK.map(r=>`<option value="${r}" ${v===r?"selected":""}>${esc(urName(r))}</option>`).join("")}</select>`; }
 function uEditModal(u){
   const isNew=!u;
-  u=u||{id:uid(),role:"driver",kind:"pin",active:true,mach:[]};
-  const dumps=S.machines.filter(m=>m.status!=="غیرفعال"&&DUMP.indexOf(m.type)>=0);
+  u=u||{id:uid(),role:"driver",kind:"pin",active:true,mach:[],subs:[]};
+  /* همه‌ی ماشین‌ها، گروه‌بندی‌شده بر اساس بخش — نه فقط کمپرسی‌ها.
+     چند ماشین برای یک نفر عادی است (سرشوفر، راننده‌ی دو شیفته). */
+  const live=S.machines.filter(m=>m.status!=="غیرفعال");
+  const bySec={}; live.forEach(m=>{ const k=secByType(m.type); (bySec[k]=bySec[k]||[]).push(m); });
+  const machBox=SEC_K.filter(k=>bySec[k]).map(k=>`<div style="margin-top:6px"><div class="m" style="${secBar(k)};padding-inline-start:6px">${esc(secN(k))}</div>
+    ${bySec[k].map(m=>`<label style="display:flex;gap:8px;align-items:center;padding:2px 0">
+      <input type="checkbox" class="umach" value="${m.id}" style="width:auto" ${(u.mach||[]).indexOf(m.id)>=0?"checked":""}>
+      ${esc(m.name)} <span class="m">${esc(m.type)}</span></label>`).join("")}</div>`).join("");
+  const staffBox=staff().map(c=>`<label style="display:flex;gap:8px;align-items:center;padding:2px 0">
+    <input type="checkbox" class="usub" value="${c.id}" style="width:auto" ${(u.subs||[]).indexOf(c.id)>=0?"checked":""}>
+    ${esc(c.name)} <span class="m">${esc(roleOf(c))}</span></label>`).join("");
   showModal(`<div class="tdform"><h3 style="margin:0 0 8px">${isNew?"کاربر جدید":"ویرایش "+esc(u.name||u.user)}</h3>
     <div class="grid2">
       <div><label>نام نمایشی</label><input id="unm" value="${esc(u.name||"")}"></div>
@@ -4972,10 +5192,10 @@ function uEditModal(u){
       <div><label>پرسنل مرتبط</label><select id="ucd"><option value="">—</option>${staff().map(c=>`<option value="${c.id}" ${u.cid===c.id?"selected":""}>${esc(c.name)} (${esc(roleOf(c))})</option>`).join("")}</select></div>
       <div><label>دستگاه بچینگ (برای اوپراتور)</label><select id="upl"><option value="">—</option>${["A","B","C"].map(x=>`<option ${u.plant===x?"selected":""}>${x}</option>`).join("")}</select></div>
     </div>
-    <label style="margin-top:8px">دستگاه‌های این راننده</label>
-    <div class="ulist" style="max-height:30vh">${dumps.length?dumps.map(m=>`<label style="display:flex;gap:8px;align-items:center">
-      <input type="checkbox" class="umach" value="${m.id}" style="width:auto" ${(u.mach||[]).indexOf(m.id)>=0?"checked":""}> ${esc(m.name)} <span class="m">${esc(m.type)}</span></label>`).join("")
-      :'<div class="note">دستگاه کمپرسی/تریلی فعالی ثبت نشده است.</div>'}</div>
+    <label style="margin-top:8px">دستگاه‌های این نفر <span class="m">(چندتایی — هر چند تا که لازم است)</span></label>
+    <div class="ulist" style="max-height:28vh">${live.length?machBox:'<div class="note">دستگاه فعالی ثبت نشده است.</div>'}</div>
+    <label style="margin-top:8px">نیروهای زیرمجموعه <span class="m">(چندتایی — برای سرپرست و سرشوفر)</span></label>
+    <div class="ulist" style="max-height:28vh">${staffBox||'<div class="note">پرسنلی ثبت نشده است.</div>'}</div>
     <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="uac" type="checkbox" style="width:auto" ${u.active!==false?"checked":""}> فعال باشد</label>
     ${isNew?`<label style="margin-top:8px">رمز اولیه ${u.kind==="pin"?"(۴ رقم)":""}</label><input id="upw" dir="ltr" value="${uPin4()}">`:""}
     <div class="note" id="uerr" style="margin-top:6px;color:var(--bad)"></div>
@@ -4995,12 +5215,14 @@ function uPwModal(u,self){
 /* ---------- ساخت گروهی ---------- */
 function uSeedModal(){
   const taken={}; S.users.forEach(u=>{ if(u.cid) taken[u.cid]=u; });
-  const guess=c=>{ const r=roleOf(c);
-    if(r==="سرشوفر") return "chief";
+  /* نقش از روی سمت و نوع دستگاهِ اختصاص‌یافته حدس زده می‌شود؛
+     بدون دستگاه، نقش راننده حدس زده نمی‌شود تا اشتباه ثبت نشود. */
+  const guess=c=>{ const r=roleOf(c), m=S.machines.find(m=>m.id===c.machineId), t=m?m.type:"";
+    if(r==="سرشوفر") return t==="میکسر"?"mixchief":"chief";
     if(r==="سرپرست کارخانه") return "boss";
     if(r==="مدیریت کارخانه") return "manager";
     if(r==="اپراتور بچینگ") return "operator";
-    if(r==="راننده"){ const m=S.machines.find(m=>m.id===c.machineId); return m&&DUMP.indexOf(m.type)>=0?"driver":""; }
+    if(r==="راننده"){ if(DUMP.indexOf(t)>=0) return "driver"; if(t==="میکسر") return "mixdriver"; return ""; }
     return ""; };
   const L=staff().filter(c=>!taken[c.id]);
   const hasAdmin=S.users.some(u=>u.role==="admin"&&u.active!==false);
@@ -5171,7 +5393,8 @@ document.addEventListener("click",async e=>{
     if(isNew&&!S.users.length&&rl!=="admin") return err("uerr","اولین کاربر باید ادمین باشد، وگرنه بعد از ساختن، خودت هم نمی‌توانی وارد شوی.");
     if(isNew&&!S.users.length&&kd==="pin") return err("uerr","برای حساب ادمین رمز کامل بگذار، نه رمز عددی.");
     const mach=[].slice.call(document.querySelectorAll(".umach")).filter(x=>x.checked).map(x=>x.value);
-    const u=Object.assign({},old||{},{id:b.dataset.id,name:nm,user:us,role:rl,kind:kd,cid:g("ucd"),plant:g("upl"),mach,
+    const subs=[].slice.call(document.querySelectorAll(".usub")).filter(x=>x.checked).map(x=>x.value);
+    const u=Object.assign({},old||{},{id:b.dataset.id,name:nm,user:us,role:rl,kind:kd,cid:g("ucd"),plant:g("upl"),mach,subs,
       active:(document.getElementById("uac")||{}).checked!==false});
     if(isNew){ const pw=toEn(g("upw"));
       if(kd==="pin"&&!/^\d{4,8}$/.test(pw)) return err("uerr","رمز عددی باید ۴ تا ۸ رقم باشد.");
