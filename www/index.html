@@ -205,7 +205,7 @@ const DUMP=["کمپرسی","کمپرسی تریلی"];
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۲۸ آبان — ۹";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const APP_BUILD="۳۰ آبان — ۱۰";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -1263,7 +1263,7 @@ const verTol=()=>+LS.get("verTol",30)*60000;
 const SEG_L={rep:"گزارش",greet:"تعارف",fix:"اصلاح",ask:"درخواست شخصی"};
 const SEG_ST={ready:"آماده ثبت",queued:"صف تأیید",done:"ثبت شد",ignored:"بی‌اثر"};
 const RE_GREET=/^[\s،,.:!ـ]*(?:(?:(?:با\s*)?سلام(?:\s*علیکم)?|درود|عرض\s*ادب|خسته\s*نباشید|خدا\s*?قوت|ممنون(?:م)?|متشکرم|تشکر|سپاس|ارادت|قربان\s*شما|چاکرم|شب\s*(?:خوش|بخیر)|(?:صبح|ظهر|عصر|روز|وقت)\s*بخیر|ان\s*شا\s*الله|انشالله|خدمت\s*شما|جناب|مهندس|سرکار)[\s،,.!:ـ]*(?:و\s*)?)+$/;
-const RE_FIX=/اشتباه\s*(?:شد|نوشتم|زدم|بود|فرستادم)|ببخشید\s|اصلاح\s*(?:می|کن|شود)|درستش|به\s*جای\s|بجای\s|لغو\s*کن|پیام\s*(?:قبل|قبلی)|قبلی\s*(?:رو|را)\s*(?:حذف|نادیده)/;
+const RE_FIX=/اشتباه\s*(?:شد|نوشتم|زدم|بود|فرستادم|تایپی)|ببخشید\s|اصلاح\s*(?:می|کن|شود)|درستش|صحیح\s*(?:است|هست)|برعکس\s*(?:نوشت|زد)|جا\s*به\s*جا\s*نوشت|به\s*جای\s|بجای\s|لغو\s*کن|پیام\s*(?:قبل|قبلی)|قبلی\s*(?:رو|را)\s*(?:حذف|نادیده)/;
 const RE_ASK=/حقوق|مساعده|کارت\s*سوخت(?!\s*گیری)|بیمه|قسط|وام|مرخصی\s*بدید|لطفا?\s*(?:برام|برای من)|درخواست\s*دارم|خواهشمند/;
 /* شکستن متن: خط جدید، نقطه، و واژه‌های شروع موضوع تازه (طول متن دست نمی‌خورد تا نشانی قطعه‌ها درست بماند) */
 function segSplit(body){ const s=String(body||"").replace(/[ \t](?=(?:ضمن[اًا]|راستی|همچنین|پ\.?ن)[\s،:])/g,"\n");
@@ -1293,6 +1293,12 @@ function segRecord(x,g,i){ const c=S.contacts.find(k=>k.id===x.contactId)||conta
       kind="rep"; r.type=hit.type; if(hit.type!=="stop"){ r.cause=null; r.fuel=false; } }
     conf=Math.max(conf,Math.min(.95,.7+.05*Math.min(4,hit.n-hit.miss))); }
   if(kind==="rep"&&lexFit(x.contactId,r.type,x.time)) conf=Math.min(.95,conf+.05);
+  if(kind==="rep"&&r.type==="batch"){            // گزارش بچینگ: مغایرت واحد یا نبود دستگاه/شیفت باید تأیید بخورد
+    const rows=batchSmsParse(g.text,x.rdate||x.date,{shift:(c||{}).shift||""});
+    const ownM=!!(c&&(S.machines.find(q=>q.id===c.machineId)||{}).type==="بچینگ");
+    if(rows.some(q=>q.odd||!q.shiftKnown||(q.volume>0&&!q.machineId&&!ownM))) conf=Math.min(conf,.45);
+    const nt=rows.map(q=>q.note).filter(Boolean); if(nt.length) r.autoNote=nt.join(" • ");
+    const sg=rows.find(q=>q.sug); if(sg) r.volSug=sg.sug.volume; }
   return Object.assign(r,{smsId:x.id,span:g.span,kind,by,conf,lex:hit?hit.id:"",
     date:x.date,time:x.time,rdate:r.rdate&&r.rdate!==x.date?r.rdate:"",
     state:kind==="greet"?"ignored":"queued",vState:"",status:kind==="greet"?"archived":"new"}); }
@@ -1309,9 +1315,14 @@ async function segRun(sg,quiet){
   try{ await caseTouch(cur); await verifRun(cur); }catch(e){}
   return true; }
 /* پردازش یک پیامک: تک‌موضوعی مثل قبل، چندموضوعی از راه قطعه‌ها */
+/* گزارش بچینگ چندخطی یک واحد است (تاریخ، تناژ و متراژ در خطوط جدا) و شکسته نمی‌شود */
+function bFlag(x){ const c=S.contacts.find(k=>k.id===x.contactId), rows=bParse(x);
+  const ownM=!!(c&&(S.machines.find(q=>q.id===c.machineId)||{}).type==="بچینگ");
+  return !rows.length||rows.some(q=>q.odd||!q.shiftKnown||(q.volume>0&&!q.machineId&&!ownM)); }
 async function smsProcess(x,quiet){
-  const gs=SEG_ON()?segSplit(x.body):[];
-  if(gs.length<2&&segClass(x.body)==="rep"){ const k=smsKind(x);   // تک‌موضوعی: همان مسیر همیشگی
+  const whole=smsKind(x)==="batch", body=String(x.body||"");
+  const gs=(SEG_ON()&&!whole)?segSplit(body):[{span:[0,body.length],text:body}];
+  if(gs.length<2&&segClass(x.body)==="rep"&&!(whole&&bFlag(x))){ const k=smsKind(x);   // تک‌موضوعی: همان مسیر همیشگی
     if(k){ let ok=false; try{ ok=await smsConvert(k,x,quiet); }catch(e){ ok=false; }
       if(ok){ try{ await caseTouch(x); await verifRun(x); }catch(e){} return true; } } }
   /* موضوع مشخص نشد یا ثبت ناقص ماند: به‌جای افتادن در «عمومی»، به صف تأیید می‌رود */
@@ -1478,6 +1489,43 @@ function aiHints(L){ const out=[];
   const gen=S.lex.filter(r=>r.scope==="sms"&&r.who==="*"&&!r.off&&r.n>r.miss).sort((a,b)=>b.n-a.n).slice(0,8);
   if(gen.length) out.push("- عمومی: "+gen.map(r=>`«${r.pat}» ⟵ ${lexName(r.type)}`).join("، "));
   return out.length?`\nآموخته‌های این کارخانه (همه از تأیید خودِ سرپرست، نه حدس):\n${out.join("\n")}\nاگر متن تازه با این الگوها خواند همان نوع را بده، مگر خود متن صریحاً چیز دیگری بگوید. این آموخته‌ها اجازه نمی‌دهند عددی بسازی.\n`:""; }
+/* ---------- آموزش الگوی اوپراتورهای بچینگ از نمونه‌های واقعی ---------- */
+const BSEED=[
+ {key:"علیخانی",role:"اپراتور بچینگ",shift:"شب",expect:"daily",
+  note:"خیلی خلاصه می‌نویسد: «سلام + تاریخ شمسی + شیفت شب» و دو خط «تناژ بار» و «متراژ بار» (گاهی «تناژ اصلی بار» یا «شب کاری»). تناژش به تن است و «/» و «.» و «-» در عددهایش ممیز است، یعنی ۴۲۸/۳۰۴ همان ۴۲۸٫۳۰۴ تن. دستگاهش A یا B است ولی در پیامک نمی‌نویسد؛ دستگاه را حدس نزن و بپرس. گاهی جای تناژ و متراژ را عوض می‌کند. اگر شیفت را ننوشت، شیفت شب است.",
+  pats:["سلام 1405/8/29 شیفت شب\nتناژ بار 428/304\nمتراژ بار 177/2","تاریخ 1405.8.20 شب کاری\nتناژ اصلی بار 97.430\nمتراژ بار 39.9","سلام 1405.8.23 شیفت شب\nتناژ بار 124/7\nمتراژ بار 297/470"]},
+ {key:"طاهری",role:"اپراتور بچینگ",shift:"",expect:"daily",
+  note:"تاریخ را با نام ماه می‌نویسد («۲۹ابان») و تناژ را به کیلوگرم («۵۰۶۲۰۰» یعنی ۵۰۶٫۲ تن). «ب» را به‌جای «با» می‌نویسد و فاصله نمی‌گذارد («بتناژ»، «۲۰۳.۹با»). ممکن است دو بارگیری دو شیفت را در یک پیام بفرستد و کار تعمیر و انبار را هم در همان پیام بنویسد. دستگاه را با حرف می‌نویسد (b، c، بی، سی) و گاهی چسبیده به متراژ («B113.4»). در هر دو شیفت کار می‌کند، پس شیفت را حدس نزن.",
+  pats:["29ابان 203.9با تناژ 506200با دستگاه b بارگیری شد","27ابان شیفت شب 82متر بار ب تناژ 196700 با دستگاه c","21ابان متاژ بارگیری با دستگاه B113.4 وزن کل بارگیری 272050کیلوگرم"]},
+ {key:"یاراحمدی",role:"اپراتور بچینگ",shift:"",expect:"daily",
+  note:"با «سلام عزیزم گزارش امروز» شروع می‌کند و معمولاً تاریخ نمی‌نویسد، پس تاریخ ارسال حساب می‌شود. عدد را قبل از برچسب می‌نویسد («۲۲۰-۹متراژ») و «-» ممیز است. «وزن کل» یعنی تناژ به تن. گاهی ممیز متراژ را جا می‌اندازد («۱۷۳۰۵» یعنی ۱۷۳٫۰۵) — عدد را خودت تأیید کن. تعمیرهایش را در خط آخر می‌نویسد. معمولاً فرستادن گزارش را فراموش می‌کند.",
+  pats:["سلام عزیزم گزارش امروز\n220-9متراژ\n497/400وزن کل\nتعویض یاتاقان نوار شیبدار بچینگ B","سلام عزیزم گزارش امروز\n17305متراژ\n453-800 وزن کل","تاریخ 8/20\n13متر بتن زدم"]}];
+function seedPats(texts){ const c={}, out=[];
+  texts.forEach(t=>new Set(lexWords(t)).forEach(w=>c[w]=(c[w]||0)+1));
+  const com=Object.keys(c).filter(w=>c[w]>=2).sort((a,b)=>b.length-a.length);
+  if(com.length>=3) out.push(com.slice(0,3).sort().join(" "));
+  if(com.length>=2) out.push(com.slice(0,2).sort().join(" "));
+  return out; }
+async function seedBatch(manual){ let nc=0, np=0, miss=[];
+  for(const s of BSEED){ const c=S.contacts.find(k=>new RegExp(s.key).test(k.name||""));
+    if(!c){ miss.push(s.key); continue; }
+    await save("contacts",Object.assign({},c,{role:c.role||s.role,shift:c.shift||s.shift,expect:s.expect,aiNote:c.aiNote||s.note})); nc++;
+    for(const p of seedPats(s.pats)){ if(S.lex.some(r=>r.scope==="sms"&&r.who===c.id&&r.pat===p)) continue;
+      await save("lex",{id:uid(),scope:"sms",who:c.id,pat:p,type:"batch",n:2,miss:0,at:Date.now(),by:"user"}); np++; } }
+  LS.set("seedB",true); render();
+  if(manual) alert(`${fa(nc)} اوپراتور آموزش داده شد و ${fa(np)} الگو ثبت شد.`+(miss.length?`\nدر فهرست پرسنل پیدا نشد: ${miss.join("، ")} — اول اضافه‌شان کن و دوباره بزن.`:""));
+  return {nc,np,miss}; }
+/* گزارش‌هایی که باید می‌رسید و نرسیده */
+function vMissing(){ const C=S.contacts.filter(c=>c.expect==="daily"&&c.active!==false), t=todayISO(), y=addDays(t,-1);
+  const late=C.filter(c=>!S.sms.some(x=>x.contactId===c.id&&(x.date===t||x.date===y)));
+  const now=new Date().getHours();
+  if(!late.length) return "";
+  return `<div class="card"><h3>گزارش‌های نرسیده<span class="tag due">${fa(late.length)}</span></h3>
+   <div class="note">کسانی که هر روز گزارش می‌دهند و در ۲۴ ساعت گذشته پیامکی از آن‌ها نرسیده${now<9?" (شاید گزارش دیشب هنوز نرسیده باشد)":""}.</div>
+   ${late.map(c=>`<div class="item"><div class="t">${esc(c.name)}<span class="tag">${esc(roleOf(c))}</span>${c.shift?`<span class="tag">شیفت ${esc(c.shift)}</span>`:""}</div>
+    <div class="m">آخرین پیام: ${(()=>{const l=[...S.sms].filter(x=>x.contactId===c.id).sort((a,b)=>b.ts-a.ts)[0]; return l?jal(l.date):"سابقه‌ای نیست";})()}</div>
+    <div class="row" style="margin-top:5px">${(c.phone||"").length>5?`<a class="ghost" style="padding:7px 12px;border-radius:9px;text-decoration:none" href="sms:${esc(c.phone)}">پیام یادآوری</a>`:""}
+     <button class="ghost" data-mtask="${c.id}">ثبت پیگیری</button></div></div>`).join("")}</div>`; }
 function vLex(){ const L=S.lex.filter(r=>r.scope==="sms"), on=L.filter(r=>!r.off);
   const grp={}; for(const r of L) (grp[r.who]=grp[r.who]||[]).push(r);
   const who=Object.keys(grp).sort((a,b)=>grp[b].length-grp[a].length);
@@ -1485,6 +1533,8 @@ function vLex(){ const L=S.lex.filter(r=>r.scope==="sms"), on=L.filter(r=>!r.off
   return `<div class="card"><h3>حافظه‌ی آموخته‌ی اپ${L.length?`<span class="tag ok">${fa(on.length)} الگو</span>`:""}</h3>
    <label style="display:flex;gap:8px;align-items:center"><input id="lexOn" type="checkbox" style="width:auto" ${LS.get("lexOn",true)?"checked":""}> یاد گرفتن از تأییدها و اصلاح‌های من</label>
    <div class="note" style="margin-top:6px">هر بار یک قطعه را خودت ثبت یا اصلاح کنی، اپ واژه‌های متمایز آن را به نام همان فرستنده نگه می‌دارد و دفعه‌ی بعد بدون اینترنت هم همان را تشخیص می‌دهد. الگویی که بیشتر از تعداد تأییدش «لغو ثبت» بخورد خودکار خاموش می‌شود.</div>
+   <div class="row" style="margin-top:8px"><button class="ghost" id="seedB">آموزش الگوی اوپراتورهای بچینگ</button></div>
+   <div class="note">الگوی نوشتن علیخانی، طاهری و یاراحمدی (واحد تناژ، شکل تاریخ، جای دستگاه و شیفت) را یک‌بار در حافظه می‌نویسد. اگر نام‌شان در فهرست پرسنل نباشد، اول اضافه‌شان کن.</div>
    ${L.length?who.map(w=>{const c=S.contacts.find(k=>k.id===w), hrs=w==="*"?[]:lexHours(w);
      return `<details style="margin-top:8px"><summary><b>${esc(c?c.name:"عمومی")}</b> (${fa(grp[w].length)})</summary>
       ${hrs.length?`<div class="m">ساعت معمول: ${hrs.map(o=>`${lexName(o.type)} ~ ${faNum(String(o.h).padStart(2,"0")+":۰۰")}`).join(" • ")}</div>`:""}
@@ -1520,6 +1570,9 @@ function vQueue(){ const Q=S.smsSeg.filter(s=>s.state==="queued").sort((a,b)=>b.
     ${s.kind==="fix"?`<div class="note">به نظر می‌رسد اصلاح یک گزارش قبلی است. اگر درست است، ثبتِ همان مورد را لغو کن تا دوباره وارد شود:</div>
       ${fixTargets(s).map(y=>`<div class="m">• ${jal(y.date)} ${faNum(y.time||"")} — ${esc(String(y.body).slice(0,60))} <button class="ghost" data-segrev="${y.id}" style="min-height:0;padding:3px 9px">لغو ثبت</button></div>`).join("")||'<div class="m">گزارش ثبت‌شده‌ای از این فرستنده در ۴۸ ساعت گذشته پیدا نشد.</div>'}`:""}
     ${s.kind==="ask"?'<div class="note">درخواست شخصی است؛ با «ثبت کار» به تب دستورات مدیر می‌رود.</div>':""}
+    ${s.type==="batch"?`<div class="note" style="margin-top:4px">خوانش بچینگ:</div>${batchSmsPreview(s)}
+      ${s.volSug&&!s.volFix?`<div class="row" style="margin-top:5px"><button class="ghost" data-segsug="${s.id}">متراژ را ${f1(s.volSug)} حساب کن</button></div>`:""}
+      ${s.volFix?`<div class="note" style="color:var(--ok)">متراژ ${f1(s.volFix)} تأیید شد.</div>`:""}`:""}
     <div class="grid2" style="margin-top:6px"><select data-segt="${s.id}">${Object.entries(SMS_T).map(([kk,v])=>`<option value="${kk}" ${s.type===kk?"selected":""}>${v}</option>`).join("")}</select>
      <select data-segmc="${s.id}"><option value="">دستگاه —</option>${S.machines.map(m=>`<option value="${m.id}" ${s.machineId===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select></div>
     <div class="row" style="margin-top:6px">${smsKind(s)?`<button class="primary" data-segok="${s.id}">${SMS_BTN[smsKind(s)]||"ثبت"}</button>`:""}
@@ -1548,44 +1601,115 @@ function vPledger(){ const t=todayISO(), L=pledger(addDays(t,-29),t); if(!L.leng
    <div class="note">این جدول فقط نظم گزارش‌دهی را نشان می‌دهد، نه عملکرد کاری؛ عملکرد در تب «عملکرد پرسنل» حساب می‌شود.</div></div>`; }
 /* ---------- گزارش پیامکی بچینگ: چند روز در یک پیام، دستگاه، متراژ، تناژ و تعمیرات اوپراتور ---------- */
 const J_MONTHS=[["فروردین"],["اردیبهشت"],["خرداد"],["تیر"],["مرداد","امرداد"],["شهریور"],["مهر"],["آبان","ابان"],["آذر","اذر"],["دی"],["بهمن"],["اسفند"]];
-const PLANT_L={a:"A","آ":"A",b:"B","ب":"B",c:"C","سی":"C"};
-const PLANT_RE=/(?:دستگاه(?:\s*بچینگ)?\s*([a-c]|آ|سی|ب(?=\s*(?:$|[.،,\n])))|بچینگ\s*([a-c]|آ|سی))(?![ء-یa-z])/i;
-const BATCH_KW=/بچینگ|بارگیری|متراژ\s*(?:بار|باز|بتن|اصلی)|تناژ\s*(?:بار|باز)|دستگاه\s*(?:[a-c]|آ|سی)(?![ء-یa-z])/i;
-const REPAIR_KW=/تعویض|تعمیر|جوش|نصب|رفع|تنظیم|گریس|روغن\s*کاری/;
-const numFa=v=>parseFloat(String(v).replace(/٬/g,"").replace(/[,٫\/]/,"."));
-const plantLetter=txt=>{const p=PLANT_RE.exec(txt||""); return p?PLANT_L[(p[1]||p[2]).toLowerCase()]:"";};
+const PLANT_L={a:"A","آ":"A","ای":"A",b:"B","ب":"B","بی":"B",c:"C","سی":"C"};
+const PLANT_SRC="(?:دستگاه|بچینگ|پلانت)(?:\\s*بچینگ)?\\s*([a-c]|آ|ای|بی|سی|ب(?![ء-ی]))(?![ء-یa-z])";
+const PLANT_RE=new RegExp(PLANT_SRC,"i");
+const BATCH_KW=/بچینگ|بار\s*گیری|بارگیری|متراژ|متاژ|تناژ|وزن\s*کل|دستگاه\s*(?:[a-c]|آ|سی|بی)(?![ء-یa-z])/i;
+const REPAIR_KW=/تعویض|تعمیر|جوش|نصب|رفع|تنظیم|گریس|روغن\s*کاری|تمیز|شست|شمارش|تحویل|تخلیه|راه\s*انداز|سرویس/;
+const DENS_OK=[2200,2600], DENS_W=[1750,3100];
+/* «۴۲۸/۳۰۴» و «۴۵۳-۸۰۰» و «۹۷.۴۳۰» همه یعنی ممیز */
+const numFa=v=>{ const s=String(v).replace(/٬/g,"").trim(), m=/^(\d+)[.,٫\/\-](\d+)$/.exec(s);
+  return m?parseFloat(m[1]+"."+m[2]):(parseFloat(s)||0); };
+const plantLetter=txt=>{const p=PLANT_RE.exec(txt||""); return p?PLANT_L[String(p[1]).toLowerCase()]:"";};
+/* یکسان‌سازی نوشتار پرسنل: «ب تناژ» ← «با تناژ»، «متاژ» ← «متراژ»، «دستگاه B113.4» ← دستگاه B + متراژ ۱۱۳٫۴ */
+function bNorm(s){ return toEn(String(s||"")).replace(/ي/g,"ی").replace(/ك/g,"ک").replace(/ـ/g,"").replace(/‌/g," ")
+  .replace(/متاژ/g,"متراژ").replace(/باز\s*زدم/g,"بار زدم").replace(/بتن\s*زدم/g,"بار زدم")
+  .replace(/بتناژ/g,"با تناژ").replace(/\bب\s+تناژ/g,"با تناژ").replace(/بدستگاه/g,"با دستگاه").replace(/\bب\s+دستگاه/g,"با دستگاه")
+  .replace(/درشیفت/g,"در شیفت").replace(/تاساعت/g,"تا ساعت").replace(/نوارشیب\s*دار/g,"نوار شیبدار")
+  .replace(/تناژ\s*اصلی\s*بار/g,"تناژ بار").replace(/وزن\s*کل\s*بارگیری/g,"وزن کل")
+  .replace(/(دستگاه\s*[a-c])\s*(?=\d)/gi,"$1 متراژ ")
+  .replace(/(\d)\s*با(?=\s*(?:تناژ|دستگاه))/g,"$1 با "); }
+const bShift=t=>/شب\s*کار|شبکار|شیفت\s*شب|تا\s*ساعت\s*(?:هشت|8)\s*صبح/.test(t)?"شب":/شیفت\s*روز|روز\s*کار/.test(t)?"روز":"";
+/* نشانه‌های دستگاه و شیفت با جای‌شان در متن، تا هر بارگیری نزدیک‌ترین را بردارد */
+function bMarks(t){ const L=[],Sh=[]; let m;
+  const re=new RegExp(PLANT_SRC,"gi"); while((m=re.exec(t))) L.push({i:m.index,L:PLANT_L[String(m[1]).toLowerCase()]});
+  const re2=/شب\s*کار|شبکار|شیفت\s*شب|تا\s*ساعت\s*(?:هشت|8)\s*صبح|شیفت\s*روز|روز\s*کار/g;
+  while((m=re2.exec(t))) Sh.push({i:m.index,end:re2.lastIndex,v:bShift(m[0])});
+  return {L,Sh}; }
+/* شیفتِ هر بارگیری: اگر بلافاصله بعد از واژه‌ی شیفت عدد آمده، مال همان بارگیریِ بعدی است؛ وگرنه مال بارگیریِ قبلی */
+function shiftFor(loads,n,marks,txt){
+  for(const m of marks){ const gap=txt.slice(m.end).search(/\d/); let idx;
+    if(gap>=0&&gap<=6) idx=loads.findIndex(l=>l.i>=m.end);                  // «شیفت شب ۸۲متر» → بارگیریِ بعدی
+    else { const pv=loads.filter(l=>l.i<m.i); idx=pv.length?loads.indexOf(pv[pv.length-1]):0; }
+    if(idx===n) return m.v; }
+  return ""; }
+const nearest=(arr,i)=>arr.length?arr.reduce((a,b)=>Math.abs(b.i-i)<Math.abs(a.i-i)?b:a):null;
+const before=(arr,i)=>{ const p=arr.filter(k=>k.i<=i); return p.length?p[p.length-1]:(arr[0]||null); };
+/* شماره‌ها را با نقش‌شان (متراژ / تناژ / بی‌برچسب) می‌خواند و جفت می‌کند */
+function bLoads(txt){ const T=[], re=/(\d+(?:[.,٫\/\-]\d+)?)/g; let m;
+  let used=0;                                   // جایی که برچسبِ عددِ قبلی تمام شده، تا دوباره خوانده نشود
+  while((m=re.exec(txt))){ const pre=txt.slice(Math.max(used,m.index-18),m.index);
+    let post=txt.slice(re.lastIndex,re.lastIndex+18); const nd=post.search(/\d/); if(nd>=0) post=post.slice(0,nd);
+    /* برچسبِ قبلِ عدد مقدم است: «دستگاه B متراژ ۱۱۳٫۴ وزن کل ۲۷۲۰۵۰» دو عدد با دو برچسب جداست */
+    const preV=/(?:متراژ|متر\s*مکعب)[^\d]{0,10}$/.test(pre), preT=/(?:تناژ|وزن(?:\s*کل)?)[^\d]{0,10}$/.test(pre);
+    const mV=/^\s*(متراژ|متر\s*مکعب|مترمکعب|متر(?![ء-ی])|m3)/i.exec(post), mT=/^\s*(کیلوگرم|کیلو|تن(?![ء-ی])|وزن\s*کل|تناژ)/.exec(post);
+    const r=preV?"v":preT?"t":mV?"v":mT?"t":"b", kg=/^\s*(?:کیلوگرم|کیلو)/.test(post);
+    used=re.lastIndex+((r==="v"&&mV&&!preV)?mV[0].length:(r==="t"&&mT&&!preT)?mT[0].length:0);
+    if(r==="b"&&/^\s*(?:عدد|تا|درصد|سال|نفر|%|ساعت|صبح|نفره)/.test(post)) continue;   // «۳عدد»، «سه تا»
+    T.push({v:numFa(m[1]),i:m.index,r,kg}); }
+  const out=[]; let cur=null;
+  const push=()=>{ if(cur&&(cur.volume||cur.tons)) out.push(cur); cur=null; };
+  for(const k of T){ if(!cur) cur={volume:0,tons:0,kg:false,i:k.i};
+    let slot=k.r==="t"?"tons":k.r==="v"?"volume":(cur.volume?"tons":"volume");
+    if(cur[slot]){ push(); cur={volume:0,tons:0,kg:false,i:k.i}; slot=k.r==="t"?"tons":"volume"; }
+    cur[slot]=k.v; if(slot==="tons"&&k.kg) cur.kg=true; }
+  push(); return out; }
+/* واحد و جابه‌جایی: فقط تبدیل‌های قطعی خودکار اعمال می‌شوند؛ بقیه پیشنهاد می‌شود و تأیید می‌خواهد */
+function bUnit(L){ let v=+L.volume||0, t=+L.tons||0, note="", odd=false, sug=null;
+  const d=(a,b)=>a>0&&b>0?b*1000/a:null, ok=x=>x!=null&&x>=DENS_OK[0]&&x<=DENS_OK[1], wide=x=>x!=null&&x>=DENS_W[0]&&x<=DENS_W[1];
+  if(t>0&&(L.kg||t>5000)){ t/=1000; note="تناژ به کیلوگرم بود و به تن تبدیل شد"; }
+  if(v>0&&t>0&&!wide(d(v,t))){
+    const cand=[{v,t:t/1000,n:"تناژ به گرم/کیلو بود و اصلاح شد"},{v,t:t*1000,n:"تناژ به تن تبدیل شد"},{v:t,t:v,n:"جای تناژ و متراژ عوض شده بود و اصلاح شد"}];
+    const hit=cand.find(c=>ok(d(c.v,c.t)))||cand.find(c=>wide(d(c.v,c.t)));
+    if(hit){ v=hit.v; t=hit.t; note=hit.n; }
+    else { odd=true; const sc=[v/10,v/100,v/1000,v*10].find(x=>wide(d(x,t)));
+      if(sc){ sug={volume:+sc.toFixed(2),dens:Math.round(d(sc,t))};
+        note=`متراژ ${f1(v)} با وزن ${f1(t)} تن نمی‌خواند؛ شاید ${f1(sc)} باشد (چگالی ${fa(sug.dens)}). تأیید لازم است.`; }
+      else note=`متراژ ${f1(v)} و وزن ${f1(t)} تن با هم نمی‌خوانند (چگالی ${fa(Math.round(d(v,t)))}). تأیید لازم است.`; } }
+  const dd=d(v,t);
+  return {volume:+(+v).toFixed(2),tons:+(+t).toFixed(3),dens:dd?Math.round(dd):null,odd:odd||(dd!=null&&!wide(dd)),note,sug}; }
 function plantByLetter(L){ if(!L) return null; const re=new RegExp("(^|[^a-z])"+L+"([^a-z]|$)","i");
   return S.machines.find(m=>m.type==="بچینگ"&&(re.test(toEn(m.name||""))||String(m.code||"").toUpperCase()===L))||null; }
 /* تاریخ‌های داخل متن: «21 آبان»، «تاریخ 8/19»، «1405.8.21»، «08/22» در ابتدای خط */
 function dateMarks(t,base){ const bj=isoToJ(base), marks=[]; let m;
   const re=new RegExp("(\\d{1,2})\\s*(?:ام\\s*)?("+J_MONTHS.flat().join("|")+")(?![\\u0621-\\u06CC])","g");
   while((m=re.exec(t))){ const mo=J_MONTHS.findIndex(a=>a.includes(m[2]))+1; if(+m[1]>=1&&+m[1]<=31) marks.push({i:m.index,end:re.lastIndex,d:+m[1],mo,y:0}); }
-  const re2=/(^|\n)[ \t]*(?:(?:تاریخ|مورخ[هۀ]?)[ \t]*[:：]?[ \t]*)?(?:(1[34]\d{2})[ \t]*[.\/\-][ \t]*)?(\d{1,2})[ \t]*[.\/\-][ \t]*(\d{1,2})(?![\d.\/٫,])(?![ \t]*(?:متر|تن|لیتر|کیلو|m))/g;
+  const re2=/(^|\n)[ \t]*(?:(?:با\s*)?(?:سلام|درود|خسته\s*نباشید|سلام\s*علیکم)[\s،,.:ـ]*)?(?:(?:تاریخ|مورخ[هۀ]?)[ \t]*[:：]?[ \t]*)?(?:(1[34]\d{2})[ \t]*[.\/\-][ \t]*)?(\d{1,2})[ \t]*[.\/\-][ \t]*(\d{1,2})(?![\d.\/٫,])(?![ \t]*(?:متر|تن|لیتر|کیلو|m))/g;
   while((m=re2.exec(t))){ const mo=+m[3], d=+m[4]; if(mo>=1&&mo<=12&&d>=1&&d<=31) marks.push({i:m.index+m[1].length,end:re2.lastIndex,d,mo,y:m[2]?+m[2]:0}); }
+  const re3=/(1[34]\d{2})[ \t]*[.\/\-][ \t]*(\d{1,2})[ \t]*[.\/\-][ \t]*(\d{1,2})(?![\d.\/٫,])/g;   // تاریخ کامل، هر جای متن
+  while((m=re3.exec(t))){ const mo=+m[2], d=+m[3];
+    if(mo>=1&&mo<=12&&d>=1&&d<=31&&!marks.some(k=>Math.abs(k.i-m.index)<6)) marks.push({i:m.index,end:re3.lastIndex,d,mo,y:+m[1]}); }
   marks.sort((a,b)=>a.i-b.i);
   for(const k of marks){ const jy=k.y||(k.mo>bj.jm+1?bj.jy-1:bj.jy); try{ k.date=jToIso(jy,k.mo,k.d); }catch(e){ k.date=base; } }
   return marks; }
-function batchSmsParse(body,baseIso){
-  const base=baseIso||todayISO(), t=toEn(String(body||"")).replace(/ي/g,"ی").replace(/ك/g,"ک"), marks=dateMarks(t,base);
+function batchSmsParse(body,baseIso,opt){
+  const base=baseIso||todayISO(), o=opt||{}, t=bNorm(body), marks=dateMarks(t,base);
   const cut=marks.length?marks.map((k,n)=>({k,txt:t.slice(k.end,n+1<marks.length?marks[n+1].i:t.length)})):[{k:null,txt:t}];
-  return cut.map(({k,txt})=>{
+  const rows=[];
+  for(const {k,txt} of cut){
     const sent=txt.split(/\.(?!\d)|\n|؛/).map(x=>x.trim()).filter(Boolean);
-    const reps=sent.filter(x=>REPAIR_KW.test(x)&&!/\d\s*متر|متراژ|تناژ/.test(x)).map(x=>({text:x.replace(/^[\s:،\-–]+/,""),letter:plantLetter(x)}));
+    /* جمله‌ای که کار است نه بارگیری: تعمیر، نصب، تمیزکاری، شمارش و تحویل انبار */
+    const reps=sent.filter(x=>REPAIR_KW.test(x)&&!/متراژ|تناژ|وزن\s*کل|\d\s*متر(?![ء-ی])/.test(x))
+      .map(x=>({text:x.replace(/^[\s:،\-–و]+/,""),letter:plantLetter(x)}));
     const rest=sent.filter(x=>!reps.some(r=>x.includes(r.text))).join(" . ");
-    const L=plantLetter(rest), mc=plantByLetter(L);
-    const lab=[...rest.matchAll(/متراژ[^\d\n]{0,18}(\d+(?:[.,٫\/]\d+)?)/g)].map(q=>numFa(q[1]));
-    const nf=/(\d+(?:[.,٫\/]\d+)?)\s*(?:متر\s*مکعب|مترمکعب|متر|m3)/i.exec(rest);
-    let volume=lab.length?lab[0]:nf?numFa(nf[1]):0, tons=0;
-    const tk=/تناژ[^\d\n]{0,18}(\d[\d٬]*(?:[.,٫\/]\d+)?)/.exec(rest), tt=/(\d+(?:[.,٫]\d+)?)\s*تن(?![ء-ی])/.exec(rest);
-    if(tk) tons=numFa(tk[1]); else if(tt) tons=numFa(tt[1]);
-    else if(lab.length>=2){ const a=Math.min(lab[0],lab[1]), b=Math.max(lab[0],lab[1]); if(a>0&&b/a>=2&&b/a<=2.9){ volume=a; tons=b; } }
-    if(tons>0){ if(volume>0){ const ok=v=>v*1000/volume>=1800&&v*1000/volume<=3000; if(!ok(tons)&&ok(tons/1000)) tons/=1000; } else if(tons>500) tons/=1000; }
-    const dens=volume>0&&tons>0?tons*1000/volume:null;
-    return {date:k?k.date:base,letter:L,machineId:mc?mc.id:"",volume,tons:+tons.toFixed(3),dens,odd:dens!=null&&(dens<2200||dens>2600),shift:/شب\s*کار|شبکار|شیفت\s*شب/.test(txt)?"شب":"روز",reps,
-      text:txt.replace(/^[\s:،\-–.]+/,"").replace(/\s+/g," ").trim()}; }).filter(x=>x.text||x.volume); }
-function isBatchSms(x){ const c=S.contacts.find(k=>k.id===x.contactId), sg=batchSmsParse(x.body,x.date);
-  return sg.some(g=>g.letter||g.volume>0||g.reps.length)&&((c&&roleOf(c)==="اپراتور بچینگ")||BATCH_KW.test(toEn(x.body||""))); }
-function batchSmsPreview(x){ return batchSmsParse(x.body,x.date).map(g=>`<div class="m">• ${jal(g.date)}${g.shift==="شب"?" (شب)":""} — ${g.letter?"دستگاه "+g.letter+(g.machineId?"":" (در ماشین‌آلات پیدا نشد)"):"دستگاه نامشخص"}${g.volume?` • ${f1(g.volume)} م³`:" • بدون متراژ"}${g.tons?` • ${f1(g.tons)} تن`:""}${g.dens?` • ${fa(Math.round(g.dens))} kg/m³${g.odd?' <span class="tag due">چگالی غیرعادی</span>':""}`:""}${g.reps.length?` • ${fa(g.reps.length)} تعمیر`:""}</div>`).join(""); }
+    const mk_=bMarks(rest), day=k?k.date:base, text=txt.replace(/^[\s:،\-–.]+/,"").replace(/\s+/g," ").trim();
+    const loads=bLoads(rest);
+    if(!loads.length){
+      const L=plantLetter(rest), mc=plantByLetter(L);
+      if(text||reps.length) rows.push({date:day,letter:L,machineId:mc?mc.id:"",volume:0,tons:0,dens:null,odd:false,note:"",sug:null,
+        shift:bShift(txt)||o.shift||"روز",shiftKnown:!!bShift(txt)||!!o.shift,reps,text});
+      continue; }
+    loads.forEach((ld,n)=>{
+      const u=bUnit(ld), lm=before(mk_.L,ld.i), sv=shiftFor(loads,n,mk_.Sh,rest), mc=plantByLetter(lm?lm.L:"");
+      rows.push(Object.assign({date:day,letter:lm?lm.L:"",machineId:mc?mc.id:"",
+        shift:sv||o.shift||"روز",shiftKnown:!!sv||!!o.shift,
+        reps:n===0?reps:[],text:loads.length>1?`${text} (بارگیری ${fa(n+1)} از ${fa(loads.length)})`:text},u)); }); }
+  return rows.filter(x=>x.text||x.volume||x.tons||x.reps.length); }
+const bParse=x=>batchSmsParse(x.body,x.rdate||x.date,{shift:(S.contacts.find(c=>c.id===x.contactId)||{}).shift||""});
+function isBatchSms(x){ const c=S.contacts.find(k=>k.id===x.contactId), sg=bParse(x), op=c&&roleOf(c)==="اپراتور بچینگ";
+  if(!BATCH_KW.test(bNorm(x.body))&&!op) return false;
+  return sg.some(g=>op?(g.letter||g.volume>0||g.tons>0||g.reps.length):((g.volume>0&&g.tons>0)||g.letter)); }
+function batchSmsPreview(x){ return bParse(x).map(g=>`<div class="m">• ${jal(g.date)} ${g.shift==="شب"?"شب":"روز"}${g.shiftKnown?"":" (شیفت حدسی)"} — ${g.letter?"دستگاه "+g.letter+(g.machineId?"":" (در ماشین‌آلات پیدا نشد)"):"دستگاه نامشخص"}${g.volume?` • ${f1(g.volume)} م³`:" • بدون متراژ"}${g.tons?` • ${f1(g.tons)} تن`:""}${g.dens?` • ${fa(g.dens)} kg/m³${g.odd?' <span class="tag due">چگالی غیرعادی</span>':""}`:""}${g.reps.length?` • ${fa(g.reps.length)} کار/تعمیر`:""}${g.note?`<br><span style="color:var(--bad)">${esc(g.note)}</span>`:""}</div>`).join(""); }
 function smsItem(x){const st_=x.status==="new"?'<span class="tag soon">جدید</span>':x.status==="done"?`<span class="tag ok">${x.auto?"ثبت خودکار":"ثبت شد"}</span>`:'<span class="tag">بایگانی</span>';
   const k=smsKind(x), canRev=x.status==="done";
   return `<div class="item"><div class="t"><input type="checkbox" data-smssel="${x.id}" style="width:auto;margin-inline-end:6px" aria-label="انتخاب برای ادغام">${esc(x.driver||x.phone||"ناشناس")}<span class="tag ${SMS_C[x.type]||""}">${SMS_T[x.type]||x.type}</span>${st_}${x.merged?`<span class="tag">ادغام ${fa(x.merged)} پیام</span>`:""}</div>
@@ -1632,6 +1756,7 @@ function vSms(){const P=SMSP(), t=todayISO(), a=smsAgg(addDays(t,-29),t), tot=su
    <div class="row" style="margin-top:8px"><button class="ghost" id="saveSeg">ذخیره آستانه‌ها</button></div>
    <div class="note" style="margin-top:6px">هر چیزی که زیر حد اطمینان باشد به «صف تأیید» می‌رود و در هیچ عدد و شاخصی شمرده نمی‌شود. اعداد همیشه از متن خود پیامک خوانده می‌شوند، نه از دستیار.</div>
    <div class="note" style="margin-top:6px">فقط پیامک شماره‌هایی که پایین ثبت کرده‌ای خوانده می‌شود و بقیه پیامک‌هایت وارد اپ نمی‌شوند. وقتی اپ باز است پیام‌ها خودکار وارد می‌شوند و وقتی بسته است، با باز کردن اپ.</div></div>
+  ${vMissing()}
   ${vQueue()}
   ${vCases()}
   <div class="card"><h3>پیام‌ها</h3>
@@ -1675,11 +1800,12 @@ async function smsConvert(kind,x,quiet,col){
   const title=x.title||x.summary||smsTitle(x.body), note=`گزارش پیامکی ${who} (${jal(x.date)} ${faNum(x.time||"")}): ${x.body}`;
   if(kind==="ok"){ await save(col,Object.assign({},x,{status:"archived",state:col==="smsSeg"?"ignored":undefined})); return true; }
   if(kind==="stopnote"){ if(!(+x.minutes>0)){ say("مدت توقف را در «اصلاح دسته‌بندی» وارد کن."); return false; } return done(`${fa(x.minutes)} دقیقه توقف (${x.cause||"سایر"}) در گزارش توقف‌های ${who} حساب شد.`); }
-  if(kind==="batch"){ if(!needC()) return false; const segs=batchSmsParse(x.body,x.date); let nv=0, na=0, nr=0; if(!segs.length) return false;
+  if(kind==="batch"){ if(!needC()) return false; const segs=bParse(x); let nv=0, na=0, nr=0; if(!segs.length) return false;
     const own=S.contacts.find(k=>k.id===x.contactId), ownM=own&&(S.machines.find(q=>q.id===own.machineId)||{}).type==="بچینگ"?own.machineId:"";
-    for(let i=0;i<segs.length;i++){ const g=segs[i], mid=g.machineId||ownM;
-      if(g.volume>0||!g.reps.length){ if(!days_.includes(g.date)) days_.push(g.date); if(g.volume>0) nv++; else na++;
-        await mk("opprod",{id:"s_"+x.id+"_"+i,date:g.date,shift:g.shift,machineId:mid,contactId:x.contactId,volume:g.volume||0,tons:g.tons||0,grade:"",note:g.text,src:"sms"}); }
+    for(let i=0;i<segs.length;i++){ const g=segs[i], mid=g.machineId||(segs.length===1?x.machineId:"")||ownM;
+      const vol=(segs.length===1&&+x.volFix>0)?+x.volFix:g.volume;      // متراژ اصلاح‌شده‌ی تأییدشده‌ی کاربر
+      if(vol>0||!g.reps.length){ if(!days_.includes(g.date)) days_.push(g.date); if(vol>0) nv++; else na++;
+        await mk("opprod",{id:"s_"+x.id+"_"+i,date:g.date,shift:g.shift,machineId:mid,contactId:x.contactId,volume:vol||0,tons:g.tons||0,grade:"",note:g.text,src:"sms",dens:g.dens||0,flag:g.odd?"چگالی غیرعادی":""}); }
       for(const r of g.reps){ const pm=plantByLetter(r.letter); nr++;
         await mk("log",{id:uid(),machineId:pm?pm.id:mid,date:g.date,title:r.text,kind:"oprepair",by:x.contactId,cost:0,src:"sms"}); } }
     for(const d of days_) await syncProdDay(d);
@@ -3418,6 +3544,12 @@ document.addEventListener("click",async e=>{
       await lexLearn(cur,cur.type); await caseTouch(cur); await verifRun(cur); } return; }
   if(b.dataset.segign){ const s=S.smsSeg.find(y=>y.id===b.dataset.segign); if(!s) return;
     await save("smsSeg",Object.assign({},s,{state:"ignored",status:"archived"})); if(s.kind==="rep") await lexLearn(s,"greet"); return; }
+  if(b.id==="seedB"){ b.disabled=true; await seedBatch(true); b.disabled=false; return; }
+  if(b.dataset.segsug){ const s=S.smsSeg.find(y=>y.id===b.dataset.segsug); if(!s||!s.volSug) return;
+    await save("smsSeg",Object.assign({},s,{volFix:s.volSug,conf:.9,by:"user"})); return; }
+  if(b.dataset.mtask){ const c=S.contacts.find(k=>k.id===b.dataset.mtask); if(!c) return;
+    await save("tasks",{id:uid(),kind:"dir",title:`پیگیری گزارش نرسیده‌ی ${c.name}`,notes:"",due:todayISO(),priority:"عادی",status:"open",created:todayISO(),src:"sms"});
+    alert("در «کارها» ثبت شد."); return; }
   if(b.dataset.lexdel){ if(confirm("این الگوی آموخته حذف شود؟")) await del("lex",b.dataset.lexdel); return; }
   if(b.dataset.lexoff){ const r=S.lex.find(y=>y.id===b.dataset.lexoff); if(r) await save("lex",Object.assign({},r,{off:!r.off,miss:r.off?0:r.miss})); return; }
   if(b.id==="saveNote"){ const c=S.contacts.find(k=>k.id===gv("noteWho")); if(!c) return;
