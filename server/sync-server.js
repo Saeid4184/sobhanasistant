@@ -11,6 +11,13 @@
      APP_TOKEN اجباری است؛ بدون آن سرویس هیچ درخواستی را جواب نمی‌دهد،
      چون نشانی باز به معنی دسترسی آزاد به همه‌ی داده‌های کارگاه است.
 
+   محدودسازی هر کاربر (اختیاری ولی توصیه‌شده وقتی هر نفر گوشی خودش را دارد):
+     فایل /opt/sobhan/sync-users.json را از خود اپ بگیر
+     (پنل کاربران ← «فایل دسترسی سرور») و کنار سرویس بگذار.
+     از آن پس هر دستگاه با توکن اختصاصی خودش وصل می‌شود و سرویس فقط
+     داده‌ی مجاز همان کاربر را به او می‌دهد و فقط همان را از او می‌پذیرد.
+     اگر این فایل نباشد، سرویس مثل قبل با APP_TOKEN و دسترسی کامل کار می‌کند.
+
    نشانی‌ها:
      POST /sync          ادغام و دریافت تغییرات (هدر x-app-token)
      GET  /sync/health   وضعیت سرویس (بدون رمز)
@@ -29,6 +36,75 @@ const MAX_BODY = +(process.env.MAX_BODY_MB || 32) * 1024 * 1024;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const tkey = (c, id) => c + "\u0000" + id;
+
+/* ---------- فایل دسترسی کاربران ---------- */
+/* مجموعه‌هایی که کاربر محدود برای کار کردن لازم دارد. بیش از این به او داده نمی‌شود. */
+const OWN_COLS = { sheets: 1, machines: 1, contacts: 1, users: 1, norms: 1, trips: 1, fuel: 1, stops: 1, log: 1, scores: 1, opprod: 1, faults: 1 };
+const USERS_FILE = process.env.USERS_FILE || path.join(DIR, "sync-users.json");
+let acl = null, aclAt = 0;
+
+function loadAcl() {
+  try {
+    const st = fs.statSync(USERS_FILE);
+    if (acl && st.mtimeMs === aclAt) return acl;
+    const j = JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
+    const by = {};
+    (j.users || []).forEach(u => {
+      if (!u || !u.token) return;
+      by[String(u.token)] = {
+        uid: String(u.uid || ""), name: String(u.name || ""), role: String(u.role || ""),
+        cid: String(u.cid || ""), full: !!u.full, own: !!u.own, w: u.w !== false,
+        secs: Array.isArray(u.secs) ? u.secs.map(String) : null,
+        mach: Array.isArray(u.mach) ? u.mach.map(String) : []
+      };
+    });
+    acl = { by: by, n: Object.keys(by).length };
+    aclAt = st.mtimeMs;
+    log("فایل دسترسی خوانده شد:", acl.n, "کاربر");
+    return acl;
+  } catch (e) {
+    if (e.code !== "ENOENT") log("فایل دسترسی خوانده نشد:", e.message);
+    acl = null; aclAt = 0;
+    return null;
+  }
+}
+
+/* دسترسی این درخواست: یا کاربرِ فایل دسترسی، یا APP_TOKEN با دسترسی کامل */
+function who(req) {
+  const t = req.headers["x-app-token"] || "";
+  const a = loadAcl();
+  if (a && a.by[t]) return a.by[t];
+  if (t && t === APP) return { uid: "", name: "APP_TOKEN", role: "admin", full: true, own: false, w: true, secs: null, mach: [] };
+  return null;
+}
+
+/* آیا این رکورد در دسترس این کاربر است؟ */
+function allowed(u, col, r) {
+  if (!u || u.full) return true;
+  if (!r || typeof r !== "object") return false;
+  if (u.own) {
+    if (!OWN_COLS[col]) return false;
+    if (col === "users") return String(r.id || "") === u.uid;
+    if (String(r.by || "") === u.uid) return true;
+    if (col === "contacts") return String(r.id || "") === u.cid;
+    if (col === "machines") return u.mach.indexOf(String(r.id || "")) >= 0;
+    const mid = String(r.machineId || "");
+    if (mid && u.mach.indexOf(mid) >= 0) return true;
+    if (String(r.contactId || "") === u.cid && u.cid) return true;
+    return false;
+  }
+  if (u.secs) {
+    if (col === "users") return String(r.id || "") === u.uid;
+    if (col === "contacts" || col === "norms") return true;
+    if (col === "machines") return u.mach.indexOf(String(r.id || "")) >= 0;
+    const sec = String(r.sec || "");
+    if (sec) return u.secs.indexOf(sec) >= 0;
+    const mid = String(r.machineId || "");
+    if (mid) return u.mach.indexOf(mid) >= 0;      /* رکورد دستگاهی که بخشش را نمی‌بیند */
+    return false;                                   /* رکورد بی‌نشانه: به کاربر محدود داده نمی‌شود */
+  }
+  return true;
+}
 
 /* ---------- خواندن و نوشتن فایل داده ---------- */
 fs.mkdirSync(DIR, { recursive: true });
@@ -85,10 +161,10 @@ function prune() {
 }
 
 /* ---------- ادغام تغییرات ورودی ---------- */
-function push(body, dev) {
+function push(body, dev, u) {
   const chg = (body.changes && typeof body.changes === "object") ? body.changes : {};
   const tbs = Array.isArray(body.tombs) ? body.tombs : [];
-  let nr = 0, nd = 0, c, i, arr, r, u, ex, tb, key, store;
+  let nr = 0, nd = 0, skipped = 0, c, i, arr, r, uu, ex, tb, key, store;
 
   for (c in chg) {
     arr = chg[c];
@@ -97,11 +173,12 @@ function push(body, dev) {
     for (i = 0; i < arr.length; i++) {
       r = arr[i];
       if (!r || typeof r !== "object" || !r.id) continue;
-      u = +r.u || 0;
+      if (!allowed(u, c, r)) { skipped++; continue; }
+      uu = +r.u || 0;
       tb = db.tombs[tkey(c, r.id)];
-      if (tb && (+tb.u || 0) >= u) continue;          // بعد از این تغییر حذف شده: زنده نشود
+      if (tb && (+tb.u || 0) >= uu) continue;         // بعد از این تغییر حذف شده: زنده نشود
       ex = store[r.id];
-      if (ex && (+ex.u || 0) >= u) continue;          // نسخه‌ی سرور تازه‌تر یا همان است
+      if (ex && (+ex.u || 0) >= uu) continue;         // نسخه‌ی سرور تازه‌تر یا همان است
       db.seq++;
       store[r.id] = Object.assign({}, r, { _s: db.seq, _d: dev });
       nr++;
@@ -111,36 +188,41 @@ function push(body, dev) {
   for (i = 0; i < tbs.length; i++) {
     tb = tbs[i];
     if (!tb || !tb.c || !tb.id) continue;
-    u = +tb.u || 0; key = tkey(tb.c, tb.id);
+    uu = +tb.u || 0; key = tkey(tb.c, tb.id);
     store = db.cols[tb.c];
     ex = store && store[tb.id];
-    if (ex && (+ex.u || 0) > u) continue;             // بعد از حذف دوباره ساخته شده
+    /* حذف را فقط از کسی می‌پذیریم که به آن رکورد دسترسی داشته است */
+    if (!allowed(u, tb.c, ex || { id: tb.id })) { skipped++; continue; }
+    if (ex && (+ex.u || 0) > uu) continue;            // بعد از حذف دوباره ساخته شده
     if (ex) delete store[tb.id];
     const old = db.tombs[key];
-    if (old && (+old.u || 0) >= u) continue;
+    if (old && (+old.u || 0) >= uu) continue;
     db.seq++;
-    db.tombs[key] = { c: tb.c, id: tb.id, u: u, _s: db.seq, _d: dev };
+    db.tombs[key] = { c: tb.c, id: tb.id, u: uu, _s: db.seq, _d: dev };
     nd++;
   }
 
   if (nr || nd) saveSoon();
-  return { recs: nr, dels: nd };
+  return { recs: nr, dels: nd, skipped: skipped };
 }
 
 /* ---------- تغییرات برای این دستگاه ---------- */
-function pull(cursor, limit, dev) {
+function pull(cursor, limit, dev, u) {
   const items = [];
   let c, id, r, k, tb;
   for (c in db.cols) {
     const store = db.cols[c];
     for (id in store) {
       r = store[id];
-      if ((+r._s || 0) > cursor && r._d !== dev) items.push({ s: +r._s, kind: "r", col: c, rec: r });
+      if ((+r._s || 0) > cursor && r._d !== dev && allowed(u, c, r)) items.push({ s: +r._s, kind: "r", col: c, rec: r });
     }
   }
   for (k in db.tombs) {
     tb = db.tombs[k];
-    if ((+tb._s || 0) > cursor && tb._d !== dev) items.push({ s: +tb._s, kind: "d", tb: tb });
+    /* سنگ‌قبر رکوردی که دیگر روی سرور نیست: اگر کاربر محدود است و نمی‌دانیم
+       آن رکورد مال او بوده یا نه، با شناسه و مجموعه‌اش سنجیده می‌شود */
+    if ((+tb._s || 0) > cursor && tb._d !== dev && (u && !u.full ? allowed(u, tb.c, { id: tb.id, by: u.uid }) : true))
+      items.push({ s: +tb._s, kind: "d", tb: tb });
   }
   items.sort((a, b) => a.s - b.s);
 
@@ -193,23 +275,27 @@ const srv = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204, H); return res.end(); }
 
   if (u.pathname === "/sync/health") {
-    const c = count();
+    const c = count(), a = loadAcl();
     return json(200, {
       ok: true, token: !!APP, records: c.recs, tombs: c.tombs,
-      seq: db.seq, devices: devices(), file: FILE
+      seq: db.seq, devices: devices(), file: FILE,
+      scoped: !!a, users: a ? a.n : 0
     });
   }
 
-  if (!APP) return json(503, { ok: false, error: "APP_TOKEN روی سرور تنظیم نشده است؛ سرویس داده نمی‌دهد." });
-  if (req.headers["x-app-token"] !== APP) return json(401, { ok: false, error: "رمز اپ نامعتبر" });
+  const ME = who(req);
+  if (!APP && !ME) return json(503, { ok: false, error: "APP_TOKEN روی سرور تنظیم نشده است؛ سرویس داده نمی‌دهد." });
+  if (!ME) return json(401, { ok: false, error: "رمز اپ نامعتبر" });
 
   if (u.pathname === "/sync/stats") {
+    if (!ME.full) return json(403, { ok: false, error: "این نشانی فقط برای دسترسی کامل است" });
     const out = {}; let c;
     for (c in db.cols) out[c] = Object.keys(db.cols[c]).length;
     return json(200, { ok: true, seq: db.seq, cols: out, tombs: Object.keys(db.tombs).length, devices: devices() });
   }
 
   if (u.pathname === "/sync/export") {
+    if (!ME.full) return json(403, { ok: false, error: "این نشانی فقط برای دسترسی کامل است" });
     const out = {}; let c, id, k, o;
     for (c in db.cols) {
       out[c] = [];
@@ -231,12 +317,13 @@ const srv = http.createServer(async (req, res) => {
     const dev = String(body.device || "").slice(0, 64) || "?";
     const cursor = Math.max(0, +body.cursor || 0);
     const limit = Math.min(5000, Math.max(1, +body.limit || 1500));
-    const inn = push(body, dev);
-    const out = pull(cursor, limit, dev);
-    seen(dev);
-    if (inn.recs || inn.dels || out.count)
-      log("دستگاه", dev, "← گرفت", inn.recs + "+" + inn.dels, "— داد", out.count, out.more ? "(ادامه دارد)" : "");
-    return json(200, Object.assign({ ok: true, got: inn }, out));
+    const inn = ME.w ? push(body, dev, ME) : { recs: 0, dels: 0, skipped: -1 };
+    const out = pull(cursor, limit, dev, ME);
+    seen(dev + (ME.uid ? "/" + ME.uid : ""));
+    if (inn.recs || inn.dels || out.count || inn.skipped > 0)
+      log("دستگاه", dev, ME.name ? "(" + ME.name + ")" : "", "← گرفت", inn.recs + "+" + inn.dels,
+        inn.skipped > 0 ? "رد شد " + inn.skipped : "", "— داد", out.count, out.more ? "(ادامه دارد)" : "");
+    return json(200, Object.assign({ ok: true, got: inn, ro: !ME.w }, out));
   }
 
   json(404, { ok: false, error: "نشانی نامعتبر" });
@@ -260,6 +347,9 @@ function devices() {
 
 /* ---------- بالا آمدن و خاموش شدن ---------- */
 if (!APP) log("هشدار: APP_TOKEN تنظیم نشده — سرویس تا تنظیم آن داده نمی‌دهد.");
+{ const a = loadAcl();
+  if (a) log("محدودسازی فعال است:", a.n, "کاربر از", USERS_FILE);
+  else log("محدودسازی غیرفعال — هر کس APP_TOKEN را داشته باشد همه‌ی داده را می‌گیرد. فایل", USERS_FILE, "را از اپ بگیر."); }
 prune(); setInterval(prune, 12 * 3600e3);
 srv.listen(PORT, () => log("سرویس همگام‌سازی روی پورت", PORT, "— داده در", FILE));
 

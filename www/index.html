@@ -131,6 +131,9 @@ th{color:var(--muted);font-weight:500}
 .thumb{width:64px;height:64px;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface2);cursor:pointer}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .lock{position:fixed;inset:0;z-index:100;background:var(--bg);display:grid;place-items:center;padding:20px}
+.ulist{display:flex;flex-direction:column;gap:7px;max-height:56vh;overflow:auto}
+body.ro main button.primary,body.ro main button.bad,body.ro main button.accentb{opacity:.45}
+body.ro main input,body.ro main select,body.ro main textarea{background:var(--card2,transparent)}
 .lockbox{width:100%;max-width:300px}
 .chip.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
 .jdbox h3{font-size:15px}
@@ -183,6 +186,7 @@ button.accentb{background:var(--accent);color:#fff;border:none;border-radius:10p
       <div class="sub" id="todayLbl">—</div>
     </div>
     <div class="spacer"></div>
+    <button class="icon-btn" id="meBtn" title="حساب کاربری" hidden>👤</button>
     <button class="icon-btn" id="undoBtn" title="برگشت آخرین عمل">↶</button>
     <button class="icon-btn" id="themeBtn" title="تغییر تم">◐</button>
   </div>
@@ -198,7 +202,8 @@ button.accentb{background:var(--accent);color:#fff;border:none;border-radius:10p
 /* ---------- وضعیت ---------- */
 const TABS=[
   ["today","امروز"],["dash","داشبورد"],["fleet","ناوگان زنده"],["sms","پیامک و پرسنل"],["perf","عملکرد پرسنل و ماشین‌آلات"],["check","چک‌لیست و یادآوری"],["mach","ماشین‌آلات و خرابی"],["pm","تعمیر و نگهداری"],["wash","کارواش و زیباسازی"],
-  ["batch","بچینگ و تولید"],["mat","مواد اولیه"],["plan","برنامه کارخانه"],["dir","دستورات مدیر"],["safety","ایمنی و حوادث"],["notes","یادداشت و ایده‌ها"],["rep","گزارش و نمودار"],["ai","دستیار و پیشنهادها"],["set","تنظیمات"]
+  ["batch","بچینگ و تولید"],["mat","مواد اولیه"],["plan","برنامه کارخانه"],["dir","دستورات مدیر"],["safety","ایمنی و حوادث"],["notes","یادداشت و ایده‌ها"],["rep","گزارش و نمودار"],["ai","دستیار و پیشنهادها"],["set","تنظیمات"],
+  ["my","گزارش من"],["usr","کاربران"]
 ];
 const MTYPES=["میکسر","پمپ بتن","کشنده","لودر","کمپرسی","کمپرسی تریلی","بچینگ","دیزل ژنراتور","تانکر آب","سایر"];
 const DUMP=["کمپرسی","کمپرسی تریلی"];
@@ -217,14 +222,15 @@ const secTag=k=>k?`<span class="tag" style="border-color:${secC(k)};color:${secC
 const secBar=k=>k?`border-inline-start:3px solid ${secC(k)};padding-inline-start:8px`:"";
 /* رنگ هر تب */
 const TAB_C={today:"#1f6feb",dash:"#0f766e",fleet:"#d97706",sms:"#be185d",perf:"#7c3aed",check:"#0891b2",mach:"#b45309",pm:"#9d174d",wash:"#0284c7",
-  batch:"#0e9f6e",mat:"#a16207",plan:"#4338ca",dir:"#c2410c",safety:"#b91c1c",notes:"#525252",rep:"#1d4ed8",ai:"#6d28d9",set:"#475569"};
+  batch:"#0e9f6e",mat:"#a16207",plan:"#4338ca",dir:"#c2410c",safety:"#b91c1c",notes:"#525252",rep:"#1d4ed8",ai:"#6d28d9",set:"#475569",
+  my:"#0e9f6e",usr:"#475569"};
 const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۱ آذر — ۱۴";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
-const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum"];
-const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[]};
+const APP_BUILD="۱ آذر — ۱۵";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum","users","ulog"];
+const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[],users:[],ulog:[]};
 let DB=null, SAMPLE=null, ready=false;
 
 const LS={
@@ -300,8 +306,9 @@ async function loadData(){
 async function fillStorage(){const el=document.getElementById("stUse"); if(!el) return;
   try{ const e=await navigator.storage.estimate(); el.textContent=fa(+(e.usage/1048576).toFixed(1))+" مگابایت"; }catch(x){ el.textContent="نامشخص"; }}
 async function load(){
-  showLock();
   await loadData();
+  sesRestore();
+  showLock();
   render();
   ready=true; render(); fixBig();
   if(!S.check.length && !LS.get("seeded",false)){
@@ -319,7 +326,13 @@ async function load(){
   if(AppP){ try{ AppP.addListener("appStateChange",st=>{ if(st&&st.isActive) syncSms(false); }); }catch(e){} }
   if(AppP){ try{ AppP.addListener("appUrlOpen",d=>openDeep(d&&d.url)); const r=await AppP.getLaunchUrl(); if(r&&r.url) openDeep(r.url); }catch(e){} }
 }
+let roWarned=0;
+function roBlock(){ if(!isRO()) return false;
+  if(Date.now()-roWarned>2500){ roWarned=Date.now();
+    try{ tdToast("دسترسی شما فقط مشاهده است؛ امکان ثبت یا تغییر نیست."); }catch(e){} }
+  return true; }
 async function save(col,obj){
+  if(roBlock()) return;
   if(!obj.id) obj.id=uid();
   const i=S[col].findIndex(x=>x.id===obj.id);
   if(i<0) S[col].push(obj); else S[col][i]=obj;
@@ -328,6 +341,8 @@ async function save(col,obj){
   if(["rem","machines","tasks","calib","contacts"].includes(col)) syncNotifications();
 }
 async function del(col,id){
+  if(roBlock()) return;
+  if(ME&&!can("d")){ try{ tdToast("حذف در دسترسی شما نیست."); }catch(e){} return; }
   S[col]=S[col].filter(x=>x.id!==id); render(); await persist(col);
   if(col==="contacts") pushWatch();
   if(["rem","machines","tasks","calib","contacts"].includes(col)) syncNotifications();
@@ -377,13 +392,39 @@ function chart(type,labels,values,color){
 }
 
 /* ---------- نما ---------- */
+/* نقشی که فقط یک بخش را می‌بیند: هنگام رندر، نسخه‌ی فیلترشده‌ی داده جای اصل
+   می‌نشیند و بعد برمی‌گردد. این کار فقط برای نقش‌های «فقط مشاهده» انجام
+   می‌شود، پس هیچ‌وقت داده‌ی فیلترشده ذخیره نمی‌شود. مرز واقعی داده روی
+   سرور همگام‌سازی است؛ این لایه برای دستگاه مشترک است. */
+function scoped(fn){
+  const a=RLU().secs;
+  if(!ME||a==="*"||!isRO()) return fn();
+  const ids={}; S.machines.forEach(m=>{ if(a.indexOf(secByType(m.type))>=0) ids[m.id]=1; });
+  const known={}; S.machines.forEach(m=>known[m.id]=1);
+  const okRec=r=>{ if(!r||typeof r!=="object") return true;
+    if(r.sec) return a.indexOf(r.sec)>=0;
+    const mid=r.machineId||r.pumpId||r.tractorId||"";
+    if(mid&&known[mid]) return !!ids[mid];
+    return true; };
+  const keep={};
+  const SKIPC={contacts:1,users:1,ulog:1,check:1,rem:1,norms:1};
+  for(const c of COLS){ keep[c]=S[c];
+    if(SKIPC[c]) continue;
+    S[c]= c==="machines" ? S.machines.filter(m=>!!ids[m.id]) : S[c].filter(okRec); }
+  try{ return fn(); } finally{ for(const c of COLS) S[c]=keep[c]; } }
+
 function render(){
-  document.getElementById("todayLbl").textContent = jal(todayISO())+" • نسخه "+APP_BUILD;
-  document.getElementById("nav").innerHTML = TABS.map(([k,n])=>
+  if(uOn()&&!ME){ showLock(); return; }
+  if(!canTab(tab)){ const h=RLU().home; tab=canTab(h)?h:(TABS.map(t=>t[0]).filter(canTab)[0]||"today"); location.hash="#"+tab; }
+  document.body.classList.toggle("ro",isRO());
+  document.getElementById("todayLbl").textContent = jal(todayISO())+" • نسخه "+APP_BUILD+(ME?" • "+meName():"");
+  document.getElementById("meBtn").hidden = !ME;
+  document.getElementById("nav").innerHTML = TABS.filter(([k])=>canTab(k)).map(([k,n])=>
     `<button data-tab="${k}" class="${k===tab?"active":""}" style="${k===tab?`background:${tabC(k)};border-color:${tabC(k)};color:#fff`:`border-bottom:2px solid ${tabC(k)}`}">${n}</button>`).join("");
   document.documentElement.style.setProperty("--tabc",tabC(tab));
-  document.getElementById("main").innerHTML = ({today:vToday,dash:vDash,pm:()=>vTasks("pm"),wash:()=>vTasks("wash"),
-    batch:vBatch,plan:vPlan,rep:vRep,ai:vAI,check:vCheck,set:vSet,mach:vMach,dir:vDir,fleet:vFleet,mat:vMat,safety:vSafety,notes:vNotes,sms:vSms,perf:vPerf})[tab]();
+  const V={today:vToday,dash:vDash,pm:()=>vTasks("pm"),wash:()=>vTasks("wash"),
+    batch:vBatch,plan:vPlan,rep:vRep,ai:vAI,check:vCheck,set:vSet,mach:vMach,dir:vDir,fleet:vFleet,mat:vMat,safety:vSafety,notes:vNotes,sms:vSms,perf:vPerf,my:vMy,usr:vUsers};
+  document.getElementById("main").innerHTML = scoped(V[tab]||vToday);
   if(tab==="ai") restoreChat();
   hydratePhotos();
   if(tab==="set") fillStorage();
@@ -1178,11 +1219,19 @@ function smsRule(body){const t=toEn(body||"").replace(/(\d{1,2})\s*[:،,.٫]\s*(
     const rg=/(?:از\s*)?(?:ساعت\s*)?(\d{1,2})(?:[:.٫](\d{1,2}))?\s*(?:تا|الی|لغایت|-)\s*(?:ساعت\s*)?(\d{1,2})(?:[:.٫](\d{1,2}))?/.exec(t);
     if(rg&&+rg[1]<24&&+rg[3]<24){const a=+rg[1]*60+(+rg[2]||0), b=+rg[3]*60+(+rg[4]||0); let d=b-a; if(d<0)d+=1440;
       if(d>0&&d<=960){ fromT=pad2n(rg[1])+":"+pad2n(rg[2]||0); toT=pad2n(rg[3])+":"+pad2n(rg[4]||0); if(minutes==null) minutes=d; }}}
-  if(isFuel) return {type:"stop",cause:"سوخت‌گیری",minutes,fuel:true,liters,fromT,toT};
+  /* ساعتِ اعلام‌شده در متن، وقتی بازه نیست: «ساعت ۱۶:۰۰ از خط خارج شد».
+     این با ساعتِ رسیدن پیامک یکی نیست و تطبیق GPS باید با همین سنجیده شود،
+     وگرنه حرکتِ بین ساعت اعلام‌شده و رسیدن پیام دیده نمی‌شود. */
+  let atT=null;
+  if(!fromT){ const st1=/ساعت\s*(\d{1,2})(?:\s*[:.٫]\s*(\d{1,2}))?/.exec(t);
+    if(st1&&+st1[1]<24&&+(st1[2]||0)<60){ let hh=+st1[1];
+      if(/عصر|بعدازظهر|بعد از ظهر|شب/.test(t)&&hh>=1&&hh<=11) hh+=12;
+      atT=pad2n(hh)+":"+pad2n(st1[2]||0); } }
+  if(isFuel) return {type:"stop",cause:"سوخت‌گیری",minutes,fuel:true,liters,fromT,toT,atT};
   if(type==="fault") cause="خرابی";
   if(type==="stop") cause=/ترافیک|راه بسته|مسیر/.test(t)?"ترافیک / مسیر":/صف|معدن|بارگیری/.test(t)?"صف بارگیری / معدن":/پروژه|کارفرما|منتظر/.test(t)?"انتظار در پروژه":
     /سوخت|گازوئیل/.test(t)?"سوخت‌گیری":/پلیس|مدارک|جریمه|توقیف/.test(t)?"مدارک / پلیس راه":/برف|باران|طوفان/.test(t)?"آب و هوا":/نهار|ناهار|استراحت|نماز/.test(t)?"استراحت / غذا":"سایر";
-  return {type,cause,minutes};}
+  return {type,cause,minutes,atT};}
 /* ---------- تحلیل پیامک: نوع گزارش، دستگاه، و ثبت خودکار ---------- */
 const SMS_BTN={batch:"ثبت در تولید بچینگ",fuel:"ثبت سوخت‌گیری",fault:"ثبت در خرابی‌ها",incident:"ثبت در ایمنی",ready:"ثبت آماده‌به‌کار",service:"ثبت سرویس دوره‌ای",svcdue:"ثبت در برنامه‌ی نگهداری",km:"ثبت کیلومتر",att:"ثبت در حضور و غیاب",need:"ثبت درخواست قطعه",wash:"ثبت کارواش",trip:"ثبت سرویس‌ها",job:"ثبت کار محوطه",stopnote:"تأیید توقف"};
 const FA_NUM={"یک":1,"یه":1,"دو":2,"سه":3,"چهار":4,"پنج":5,"شش":6,"شیش":6,"هفت":7,"هشت":8};
@@ -1325,7 +1374,7 @@ function smsAnalyze(body,c){ const t=toEn(body||"").replace(/ي/g,"ی").replace(
 function smsRecord(id,ts,phone,body,cGiven){const c=cGiven||contactOf(phone), d=new Date(+ts), r=smsAnalyze(body,c), day=localISO(d);
   return {id,ts:+ts,date:day,time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"),phone:normPhone(phone||(c&&c.phone)||""),
     contactId:c?c.id:"",driver:c?c.name:"",machineId:r.type==="batch"?((c&&(S.machines.find(q=>q.id===c.machineId)||{}).type==="بچینگ")?c.machineId:""):smsMachine(body,c),body,type:r.type,cause:r.cause,minutes:r.minutes,
-    fuel:!!r.fuel,liters:r.liters||null,fromT:r.fromT||"",toT:r.toT||"",cost:r.cost||0,station:r.station||"",card:r.card||"",n:r.n||0,tons:r.tons||0,att:r.att||"",km:r.km||0,sleep:!!r.sleep,
+    fuel:!!r.fuel,liters:r.liters||null,fromT:r.fromT||"",toT:r.toT||"",atT:r.atT||"",cost:r.cost||0,station:r.station||"",card:r.card||"",n:r.n||0,tons:r.tons||0,att:r.att||"",km:r.km||0,sleep:!!r.sleep,
     rdate:r.rdate&&r.rdate!==day?r.rdate:"",status:"new",ai:false};}
 const smsSec=x=>x&&x.machineId?secOf(x.machineId):(x&&x.type==="batch"?"batch":"other");
 const smsKind=x=>x.type==="batch"?"batch":x.cause==="سوخت‌گیری"?"fuel":["fault","incident","ready","service","svcdue","km","att","need","wash","trip","job"].includes(x.type)?x.type:x.type==="stop"?"stopnote":(x.type==="report"&&isBatchSms(x))?"batch":"";
@@ -1493,7 +1542,8 @@ async function verifRun(x){
   let tr=[];
   try{ const j=await gpsGet("/gps/trips?from="+day+"&to="+day); tr=(j.trips||[]).filter(g=>String(g.code)===gcode(m)); }
   catch(e){ return stop("GPS پاسخ نداد: "+(e.message||e)); }
-  const T=hhmmTs(day,x.fromT||x.time), tol=verTol(), zones=(gps.st&&gps.st.zones)||[];
+  /* ترتیب درست: ساعت صریحِ متن، بعد شروع بازه، و فقط در نهایت ساعت رسیدن پیام */
+  const T=hhmmTs(day,x.atT||x.fromT||x.time), tol=verTol(), zones=(gps.st&&gps.st.zones)||[];
   if(kind==="fuel"){
     if(!zones.some(z=>z.kind==="fuel")) return stop("محدوده‌ی جایگاه سوخت هنوز تعریف نشده");
     const inZone=tr.filter(g=>(g.zones||[]).some(z=>z.kind==="fuel"));
@@ -2316,18 +2366,201 @@ function compress(file){return new Promise((res,rej)=>{const img=new Image(),url
   img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error("img"))};img.src=url;});}
 async function hydratePhotos(){for(const img of document.querySelectorAll("img[data-photo]")){if(img.getAttribute("src"))continue;const d=await IDB.get(img.dataset.photo);if(d)img.src=d;}}
 
+/* ---------- کاربران، نقش‌ها و دسترسی ---------- */
+/* هر نقش یک قالب دسترسی است. ادمین از پنل «کاربران» می‌تواند کاربر بسازد،
+   غیرفعال کند و رمز را عوض کند. هیچ نقشی در کد قفل‌شده نیست جز خودِ ادمین. */
+const UROLES={
+  admin:   {n:"ادمین — دسترسی کامل",        tabs:"*",                                  secs:"*",        forms:"*",        w:1,e:1,d:1,gps:1,own:0,set:1,pin:0,home:"today"},
+  manager: {n:"مدیر کارخانه — فقط مشاهده",  tabs:"*",                                  secs:"*",        forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"dash"},
+  chief:   {n:"سرشوفر کمپرسی و تریلی",      tabs:["dash","fleet","mach","perf","rep"], secs:["dump"],   forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"fleet"},
+  driver:  {n:"راننده کمپرسی / تریلی",      tabs:["my"],                               secs:["dump"],   forms:["drep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"},
+  operator:{n:"اوپراتور بچینگ",             tabs:["my"],                               secs:["batch"],  forms:["orep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"}
+};
+const URK=Object.keys(UROLES);
+const urName=k=>(UROLES[k]||{}).n||k;
+let ME=null;                 /* کاربر نشست جاری؛ null یعنی هنوز کاربری ساخته نشده */
+const uFail={};              /* شمارش رمز غلط، فقط در حافظه */
+
+const RLU=()=>UROLES[(ME&&ME.role)||"admin"]||UROLES.admin;
+const uOn=()=>S.users.some(u=>u.active!==false);
+const can=k=>!ME||!!RLU()[k];
+function canTab(t){ if(!ME) return t!=="my";
+  const R=RLU(), a=R.tabs;
+  if(a==="*") return t!=="my"&&(R.set||(t!=="set"&&t!=="usr"));
+  return a.indexOf(t)>=0; }
+const canSec=x=>{const a=RLU().secs; return a==="*"||!x||a.indexOf(x)>=0;};
+const canForm=k=>{const a=RLU().forms; return a==="*"||a.indexOf(k)>=0;};
+const isRO=()=>!!ME&&!RLU().w;
+const meName=()=>ME?(ME.name||ME.user||""):"";
+const meId=()=>ME?ME.id:"";
+/* دستگاه‌های مجاز این کاربر (برای راننده: ماشین خودش) */
+function myMachs(){ if(!ME||!ME.mach||!ME.mach.length) return []; return ME.mach.slice(); }
+function myMachList(){ const ids=myMachs(); return ids.length?S.machines.filter(m=>ids.indexOf(m.id)>=0):[]; }
+
+/* ---------- هش رمز ---------- */
+/* مسیر اصلی PBKDF2 با WebCrypto است. اگر صفحه در بافت ناامن باز شود
+   (مثلاً file://) WebCrypto نیست، پس یک پیاده‌سازی خالص JS هم داریم.
+   روش و تعداد تکرار در خود رکورد کاربر ذخیره می‌شود تا بررسی همیشه با
+   همان روشِ ساخت انجام شود. */
+const PBK_WC=120000, PBK_JS=10000;
+const hasWC=()=>!!(typeof crypto!=="undefined"&&crypto.subtle&&crypto.subtle.importKey);
+const hx=b=>[].map.call(new Uint8Array(b),v=>v.toString(16).padStart(2,"0")).join("");
+function rndHex(n){ const a=new Uint8Array(n);
+  if(typeof crypto!=="undefined"&&crypto.getRandomValues) crypto.getRandomValues(a);
+  else for(let i=0;i<n;i++) a[i]=Math.floor(Math.random()*256);
+  return hx(a); }
+
+const _SK256=new Uint32Array([
+0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+function sha256b(u8){
+  const l=u8.length, tot=(((l+8)>>6)+1)<<6, m=new Uint8Array(tot);
+  m.set(u8); m[l]=0x80;
+  const dv=new DataView(m.buffer), bits=l*8;
+  dv.setUint32(tot-4,bits>>>0,false); dv.setUint32(tot-8,Math.floor(bits/4294967296),false);
+  const H=new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  const w=new Uint32Array(64);
+  for(let i=0;i<tot;i+=64){
+    for(let j=0;j<16;j++) w[j]=dv.getUint32(i+j*4,false);
+    for(let j=16;j<64;j++){ const x=w[j-15], y=w[j-2];
+      const s0=((x>>>7)|(x<<25))^((x>>>18)|(x<<14))^(x>>>3);
+      const s1=((y>>>17)|(y<<15))^((y>>>19)|(y<<13))^(y>>>10);
+      w[j]=(w[j-16]+s0+w[j-7]+s1)>>>0; }
+    let a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for(let j=0;j<64;j++){
+      const S1=((e>>>6)|(e<<26))^((e>>>11)|(e<<21))^((e>>>25)|(e<<7));
+      const t1=(h+S1+((e&f)^(~e&g))+_SK256[j]+w[j])>>>0;
+      const S0=((a>>>2)|(a<<30))^((a>>>13)|(a<<19))^((a>>>22)|(a<<10));
+      const t2=(S0+((a&b)^(a&c)^(b&c)))>>>0;
+      h=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0; }
+    H[0]=(H[0]+a)>>>0;H[1]=(H[1]+b)>>>0;H[2]=(H[2]+c)>>>0;H[3]=(H[3]+d)>>>0;
+    H[4]=(H[4]+e)>>>0;H[5]=(H[5]+f)>>>0;H[6]=(H[6]+g)>>>0;H[7]=(H[7]+h)>>>0; }
+  const o=new Uint8Array(32), od=new DataView(o.buffer);
+  for(let i=0;i<8;i++) od.setUint32(i*4,H[i],false);
+  return o; }
+function hmac256(key,msg){
+  let k=key.length>64?sha256b(key):key;
+  const ki=new Uint8Array(64), ko=new Uint8Array(64);
+  ki.set(k); ko.set(k);
+  for(let i=0;i<64;i++){ ki[i]^=0x36; ko[i]^=0x5c; }
+  const a=new Uint8Array(64+msg.length); a.set(ki); a.set(msg,64);
+  const h1=sha256b(a);
+  const b=new Uint8Array(96); b.set(ko); b.set(h1,64);
+  return sha256b(b); }
+function pbkdf2js(pw,salt,it){
+  const E=new TextEncoder(), P=E.encode(pw), SA=E.encode(salt);
+  const blk=new Uint8Array(SA.length+4); blk.set(SA); blk[SA.length+3]=1;
+  let u=hmac256(P,blk); const out=u.slice(0);
+  for(let i=1;i<it;i++){ u=hmac256(P,u); for(let j=0;j<32;j++) out[j]^=u[j]; }
+  return hx(out); }
+async function pwHash(pw,salt,it,alg){
+  pw=String(pw==null?"":pw);
+  if(alg==="p1"){
+    const E=new TextEncoder();
+    const k=await crypto.subtle.importKey("raw",E.encode(pw),"PBKDF2",false,["deriveBits"]);
+    const b=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:E.encode(salt),iterations:it},k,256);
+    return hx(b); }
+  return pbkdf2js(pw,salt,it); }
+async function pwMake(pw){ const alg=hasWC()?"p1":"j1", it=alg==="p1"?PBK_WC:PBK_JS, slt=rndHex(16);
+  return {alg,it,slt,h:await pwHash(pw,slt,it,alg)}; }
+/* true درست، false غلط، null یعنی با امکانات این دستگاه قابل بررسی نیست */
+async function pwOk(u,pw){ if(!u||!u.h) return false;
+  if(u.alg==="p1"&&!hasWC()) return null;
+  try{ return (await pwHash(pw,u.slt,u.it,u.alg||"j1"))===u.h; }catch(e){ return null; } }
+
+/* ---------- رویدادهای امنیتی ---------- */
+async function uLog(kind,note,who){
+  S.ulog.push({id:uid(),at:Date.now(),kind,note:String(note||""),who:who||meId(),name:who?"":meName(),dev:(LS.get("devName","")||"")});
+  if(S.ulog.length>600) S.ulog=S.ulog.slice(-600);
+  try{ await DBS.set("ulog",S.ulog); }catch(e){} }
+
+/* ---------- نشست ---------- */
+const SES_H=()=>+LS.get("sesH",12)||12;
+function sesSave(){ if(ME) LS.set("me",{id:ME.id,at:Date.now()}); }
+function sesClear(){ LS.set("me",null); }
+function sesRestore(){
+  const x=LS.get("me",null); if(!x||!x.id) return false;
+  const u=S.users.find(y=>y.id===x.id&&y.active!==false); if(!u) return false;
+  if(Date.now()-(+x.at||0)>SES_H()*3600e3) return false;
+  ME=u; return true; }
+async function uLogout(){ await uLog("logout",meName()); ME=null; sesClear(); tab="today"; location.hash="#today"; showLock(); render(); }
+
+/* ---------- ورود ---------- */
+let lockUser="";
+function uRoleTag(u){ const c={admin:"#b91c1c",manager:"#1d4ed8",chief:"#d97706",driver:"#0e9f6e",operator:"#7c3aed"}[u.role]||"#64748b";
+  return `<span class="tag" style="border-color:${c};color:${c}">${esc(urName(u.role))}</span>`; }
+function lockPick(){
+  const L=S.users.filter(u=>u.active!==false).sort((a,b)=>URK.indexOf(a.role)-URK.indexOf(b.role)||String(a.name).localeCompare(String(b.name),"fa"));
+  return `<div class="title" style="text-align:center;margin-bottom:4px">نام خودت را بزن</div>
+    <div class="note" style="text-align:center;margin-bottom:10px">${fa(L.length)} کاربر</div>
+    <div class="ulist">${L.map(u=>`<button class="tdt" data-lg="pick" data-id="${u.id}"><span class="tx"><b>${esc(u.name||u.user)}</b><small>${esc(urName(u.role))}</small></span>${u.kind==="pin"?'<span class="tag">رمز عددی</span>':'<span class="tag">رمز</span>'}</button>`).join("")}</div>`; }
+function lockBox(u){
+  const pin=u.kind==="pin";
+  return `<div class="title" style="text-align:center">${esc(u.name||u.user)}</div>
+    <div class="note" style="text-align:center;margin-bottom:8px">${esc(urName(u.role))}</div>
+    <input id="pinIn" type="password" ${pin?'inputmode="numeric" maxlength="8"':'maxlength="64"'} dir="ltr" autocomplete="off"
+      style="text-align:center;margin-top:6px;font-size:${pin?20:16}px;letter-spacing:${pin?6:2}px" placeholder="${pin?"رمز عددی":"رمز"}">
+    <button class="primary" id="unlock" style="width:100%;margin-top:10px">ورود</button>
+    <div class="note" id="pinMsg" style="text-align:center;margin-top:6px"></div>
+    ${S.users.filter(x=>x.active!==false).length>1?'<button class="ghost" data-lg="back" style="width:100%;margin-top:8px">کاربر دیگر</button>':''}
+    ${u.role==="admin"?'<button class="linkbtn" data-um="forgot" style="display:block;margin:8px auto 0">رمز را فراموش کردم</button>':''}`; }
+const LOGO64='data:image/png;base64,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';
+function showLock(force){
+  const el=document.getElementById("lock"); if(!el) return;
+  if(!uOn()){                                   /* سازگاری با رمز قدیمی اپ */
+    if(!LS.get("pin","")) return;
+    el.hidden=false;
+    el.innerHTML=`<div class="lockbox"><img class="logo" alt="" style="display:block;margin:0 auto 10px;width:64px;height:64px" src="${LOGO64}">
+      <div class="title" style="text-align:center">رمز اپ را وارد کن</div>
+      <input id="pinIn" type="password" inputmode="numeric" maxlength="8" dir="ltr" style="text-align:center;margin-top:12px;font-size:20px;letter-spacing:6px">
+      <button class="primary" id="unlock" style="width:100%;margin-top:10px">ورود</button><div class="note" id="pinMsg" style="text-align:center;margin-top:6px"></div></div>`;
+    setTimeout(()=>{const i=document.getElementById("pinIn");if(i)i.focus()},80); return; }
+  if(ME&&!force) return;
+  const u=lockUser?S.users.find(x=>x.id===lockUser&&x.active!==false):null;
+  el.hidden=false;
+  el.innerHTML=`<div class="lockbox"><img class="logo" alt="" style="display:block;margin:0 auto 10px;width:64px;height:64px" src="${LOGO64}">
+    ${u?lockBox(u):lockPick()}</div>`;
+  if(u) setTimeout(()=>{const i=document.getElementById("pinIn");if(i)i.focus()},80); }
+function lockHide(){ const el=document.getElementById("lock"); if(el){ el.hidden=true; el.innerHTML=""; } }
+function pinMsg(t){ const m=document.getElementById("pinMsg"); if(m) m.textContent=t; }
+
+async function tryUnlock(){
+  if(!uOn()){                                   /* مسیر رمز قدیمی */
+    const v=toEn(gv("pinIn"));
+    if(hasWC()&&(await sha(v))===LS.get("pin","")) lockHide();
+    else pinMsg("رمز اشتباه است.");
+    return; }
+  const u=S.users.find(x=>x.id===lockUser&&x.active!==false);
+  if(!u){ lockUser=""; showLock(true); return; }
+  const f=uFail[u.id]||{n:0,till:0};
+  if(f.till>Date.now()){ pinMsg("بعد از "+fa(Math.ceil((f.till-Date.now())/1000))+" ثانیه دوباره امتحان کن."); return; }
+  const raw=gv("pinIn"), v=u.kind==="pin"?toEn(raw):raw;
+  const r=await pwOk(u,v);
+  if(r===null){ pinMsg("رمز این کاربر روی این دستگاه قابل بررسی نیست. از ادمین بخواه رمز را دوباره تنظیم کند."); return; }
+  if(!r){ f.n++; if(f.n>=5){ f.till=Date.now()+60000; f.n=0; } uFail[u.id]=f;
+    await uLog("fail",u.name||u.user,u.id); pinMsg("رمز اشتباه است."+(f.till>Date.now()?" یک دقیقه قفل شد.":"")); return; }
+  uFail[u.id]={n:0,till:0};
+  ME=u; sesSave(); lockUser=""; lockHide();
+  u.last=Date.now(); try{ await DBS.set("users",S.users); }catch(e){}
+  await uLog("login",u.name||u.user,u.id);
+  const home=RLU().home; if(!canTab(tab)) { tab=canTab(home)?home:(TABS.map(t=>t[0]).filter(canTab)[0]||"today"); location.hash="#"+tab; }
+  render();
+  if(ME.must) setTimeout(()=>uPwModal(ME,true),300); }
+
 /* ---------- قفل اپ ---------- */
 let hiddenAt=0;
-async function sha(x){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("sb:"+x));return [...new Uint8Array(b)].map(v=>v.toString(16).padStart(2,"0")).join("");}
-function showLock(){if(!LS.get("pin",""))return;const el=document.getElementById("lock");el.hidden=false;
-  el.innerHTML=`<div class="lockbox"><img class="logo" alt="" style="display:block;margin:0 auto 10px;width:64px;height:64px" src="data:image/png;base64,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"><div class="title" style="text-align:center">رمز اپ را وارد کن</div>
-  <input id="pinIn" type="password" inputmode="numeric" maxlength="8" dir="ltr" style="text-align:center;margin-top:12px;font-size:20px;letter-spacing:6px">
-  <button class="primary" id="unlock" style="width:100%;margin-top:10px">ورود</button><div class="note" id="pinMsg" style="text-align:center;margin-top:6px"></div></div>`;
-  setTimeout(()=>{const i=document.getElementById("pinIn");if(i)i.focus()},80);}
-async function tryUnlock(){const v=toEn(gv("pinIn"));if((await sha(v))===LS.get("pin","")){const el=document.getElementById("lock");el.hidden=true;el.innerHTML="";}
-  else{const m=document.getElementById("pinMsg");if(m)m.textContent="رمز اشتباه است.";}}
+async function sha(x){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("sb:"+x));return hx(b);}
 document.addEventListener("visibilitychange",()=>{if(document.hidden)hiddenAt=Date.now();else if(hiddenAt&&Date.now()-hiddenAt>60000)showLock();});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target&&e.target.id==="pinIn")tryUnlock();});
+document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("[data-lg]"); if(!b) return;
+  if(b.dataset.lg==="pick"){ lockUser=b.dataset.id; showLock(true); return; }
+  if(b.dataset.lg==="back"){ lockUser=""; showLock(true); return; } });
 document.addEventListener("click",e=>{if(e.target&&e.target.id==="modal")modalClose();});
 
 function vTasks(kind){
@@ -2967,7 +3200,7 @@ async function syncProdDay(d){const O=S.opprod.filter(x=>x.date===d&&+x.volume>0
 /* ---------- اصلاح رویدادهای ثبت‌شده: ویرایش یا حذف هر رکورد ---------- */
 let edCol="faults", edQ="";
 const ED_COLS={faults:"خرابی‌ها",sms:"پیامک‌ها",fuel:"سوخت‌گیری",trips:"سرویس‌ها",stops:"توقف تولید",opprod:"تولید اوپراتور",prod:"تولید روزانه",pumpjobs:"پمپاژ",washes:"شستشو",jobs:"کار محوطه",att:"حضور و غیاب",parts:"قطعات",returns:"بتن برگشتی",scores:"کسری کارکرد",log:"سابقه‌ی دستگاه",incidents:"حوادث",receipts:"ورود مصالح",counts:"شمارش مواد",silos:"سیلو",tasks:"کارها"};
-const ED_LBL={date:"تاریخ",machineId:"دستگاه",pumpId:"پمپ",tractorId:"کشنده",contactId:"شخص",by:"انجام‌دهنده",title:"عنوان",notes:"توضیح",note:"توضیح",desc:"شرح",status:"وضعیت",downH:"ساعت توقف / خواب",minutes:"مدت (دقیقه)",min:"مدت (دقیقه)",dur:"مدت (دقیقه)",liters:"لیتر",cost:"هزینه (تومان)",volume:"حجم (م³)",tons:"تناژ",m3:"متراژ (م³)",kind:"نوع",type:"نوع",cause:"علت",cat:"دسته",site:"مقصد / مبدأ",material:"نوع بار",driver:"راننده",station:"جایگاه",fromT:"از ساعت",toT:"تا ساعت",shift:"شیفت",grade:"عیار",qty:"تعداد / مقدار",price:"قیمت واحد",name:"نام",customer:"پروژه",section:"مقطع",hours:"ساعت کار",body:"متن پیام",fixedDate:"تاریخ رفع",usage:"کارکرد",reject:"برگشتی (م³)",downtime:"توقف (دقیقه)",silo:"سیلو",norm:"نُرم",done:"انجام‌شده",stopped:"باعث توقف شد",sleep:"اعلام خواب",tDepart:"زمان حرکت",tArrive:"زمان رسیدن",tUnload:"پایان تخلیه",tReturn:"زمان برگشت",n:"تعداد سرویس",rdate:"تاریخ گزارش",time:"ساعت",fate:"سرنوشت",workers:"کارگران",minus:"امتیاز منفی",km:"کیلومتر",att:"نوع مرخصی",area:"محل",supplier:"تأمین‌کننده",quality:"کیفیت",due:"موعد",priority:"اولویت",pump:"نام پمپ",stage:"مرحله"};
+const ED_LBL={date:"تاریخ",machineId:"دستگاه",pumpId:"پمپ",tractorId:"کشنده",contactId:"شخص",by:"انجام‌دهنده",title:"عنوان",notes:"توضیح",note:"توضیح",desc:"شرح",status:"وضعیت",downH:"ساعت توقف / خواب",minutes:"مدت (دقیقه)",min:"مدت (دقیقه)",dur:"مدت (دقیقه)",liters:"لیتر",cost:"هزینه (تومان)",volume:"حجم (م³)",tons:"تناژ",m3:"متراژ (م³)",kind:"نوع",type:"نوع",cause:"علت",cat:"دسته",site:"مقصد / مبدأ",material:"نوع بار",driver:"راننده",station:"جایگاه",fromT:"از ساعت",toT:"تا ساعت",atT:"ساعت اعلام‌شده در متن",shift:"شیفت",grade:"عیار",qty:"تعداد / مقدار",price:"قیمت واحد",name:"نام",customer:"پروژه",section:"مقطع",hours:"ساعت کار",body:"متن پیام",fixedDate:"تاریخ رفع",usage:"کارکرد",reject:"برگشتی (م³)",downtime:"توقف (دقیقه)",silo:"سیلو",norm:"نُرم",done:"انجام‌شده",stopped:"باعث توقف شد",sleep:"اعلام خواب",tDepart:"زمان حرکت",tArrive:"زمان رسیدن",tUnload:"پایان تخلیه",tReturn:"زمان برگشت",n:"تعداد سرویس",rdate:"تاریخ گزارش",time:"ساعت",fate:"سرنوشت",workers:"کارگران",minus:"امتیاز منفی",km:"کیلومتر",att:"نوع مرخصی",area:"محل",supplier:"تأمین‌کننده",quality:"کیفیت",due:"موعد",priority:"اولویت",pump:"نام پمپ",stage:"مرحله"};
 const ED_SKIP=["id","u","photos","made","rev","days","ts","ai","auto","edited","noAuto","linked","phone","src","autoNote","merged","taskId","gpsDest","rejAuto","fuel","created","rot","gpsKm","gpsStop","gpsFuelMin","late","interval","usageInterval"];
 const ED_DATES=["date","rdate","fixedDate","due"];
 const edSummary=r=>[r.title||r.name||r.customer||r.site||(r.body?String(r.body).replace(/\s+/g," ").slice(0,50):"")||r.type||r.status||"",r.machineId?mName(r.machineId):"",r.contactId?cName(r.contactId):"",+r.downH?fa(r.downH)+" ساعت توقف":"",+(r.minutes||r.min)?fa(r.minutes||r.min)+" دقیقه":"",+r.volume?f1(r.volume)+" م³":"",+r.m3?f1(r.m3)+" م³":"",+r.tons?f1(r.tons)+" تن":"",+r.liters?fa(r.liters)+" لیتر":""].filter(Boolean).join(" • ");
@@ -4314,6 +4547,24 @@ const SK={
    meta:[],
    cols:[{k:"m",l:"کمپرسی / تریلی",t:"mach:کمپرسی,کمپرسی تریلی"},{k:"mine",l:"معدن",t:"text",dl:"mines"},{k:"mat",l:"مصالح",t:"sel",o:["شن","ماسه","نخاله","سایر"]},
      {k:"n",l:"تعداد سرویس",t:"num"},{k:"bill",l:"شماره بارنامه",t:"text"},{k:"tons",l:"تناژ (تن یا کیلو)",t:"num"},{k:"cause",l:"علت کم‌کاری",t:"sel",o:HAUL_CAUSES},{k:"note",l:"توضیح",t:"text"}]},
+ /* --- دو فرم ساده‌ی شخصی: راننده و اوپراتور فقط همین را می‌بینند --- */
+ drep:{t:"گزارش روزانه‌ی من (کمپرسی / تریلی)",ic:"📝",lag:1,multi:0,mine:1,
+   hint:"فقط کارکرد امروز خودت؛ هزینه و تناژ لازم نیست",
+   meta:[{k:"shift",l:"دوره",t:"sel",o:["۲۴ ساعت","شیفت روز","شیفت شب"]}],
+   fixed:()=>[{m:(myMachList()[0]||{}).code||(myMachList()[0]||{}).name||""}],
+   rowLabel:r=>{ const m=tdMach(r.m,HAULT); return m?esc(m.name):"دستگاه من"; },
+   cols:[{k:"m",l:"دستگاه",t:"mach:کمپرسی,کمپرسی تریلی"},
+     {k:"n",l:"تعداد سرویس",t:"num"},{k:"mine",l:"معدن",t:"text",dl:"mines"},
+     {k:"km",l:"کیلومتر فعلی",t:"num"},{k:"lit",l:"گازوئیل (لیتر)",t:"num"},{k:"stat",l:"جایگاه سوخت",t:"text",dl:"stations"},
+     {k:"smin",l:"توقف (دقیقه)",t:"num"},{k:"scause",l:"علت توقف",t:"sel",o:DCAUSES},
+     {k:"cause",l:"علت کم‌کاری",t:"sel",o:HAUL_CAUSES},{k:"note",l:"مشکل یا توضیح",t:"area"}]},
+ orep:{t:"گزارش روزانه‌ی من (بچینگ)",ic:"📝",lag:1,multi:0,mine:1,
+   hint:"خلاصه‌ی شیفت خودت؛ ریز هر بارگیری لازم نیست",
+   meta:[{k:"plant",l:"دستگاه بچینگ",t:"sel",o:["A","B","C"]},{k:"shift",l:"شیفت",t:"sel",o:["روز","شب"]}],
+   fixed:()=>[{}],rowLabel:()=>"خلاصه‌ی شیفت",
+   cols:[{k:"loads",l:"تعداد بارگیری",t:"num"},{k:"m3",l:"حجم تولید (م³)",t:"num"},{k:"tons",l:"تناژ (تن یا کیلو)",t:"num"},
+     {k:"smin",l:"توقف بچینگ (دقیقه)",t:"num"},{k:"scause",l:"علت توقف",t:"sel",o:DCAUSES},
+     {k:"note",l:"مشکل یا توضیح",t:"area"}]},
  dump:{t:"ثبت عملکرد کمپرسی و تریلی",ic:"🚚",lag:1,multi:0,hint:"برای هر دستگاه یک ردیف: سرویس، سوخت، توقف و کیلومتر — جدا از بچینگ",
    meta:[{k:"shift",l:"دوره",t:"sel",o:["۲۴ ساعت","شیفت روز","شیفت شب"]}],
    cols:[{k:"m",l:"کمپرسی / تریلی",t:"mach:کمپرسی,کمپرسی تریلی"},{k:"drv",l:"راننده",t:"con"},
@@ -4390,7 +4641,9 @@ const SK={
    meta:[],
    cols:[{k:"m",l:"دستگاه",t:"mach"},{k:"exp",l:"اعتبار تا",t:"jd"},{k:"note",l:"توضیح",t:"text"}]}
 };
-const SK_ORDER=["mplant","mmach","mprod","mpump","mstaff","haul","dump","project","batch","silo","fault","fuelcard","wash","yard","waste","attend","leave","imix","ipump","ibatch","saye"];
+const SK_ORDER=["mplant","mmach","mprod","mpump","mstaff","haul","dump","project","batch","silo","fault","fuelcard","wash","yard","waste","attend","leave","imix","ipump","ibatch","saye","drep","orep"];
+/* کاشی‌های فرم شخصی در صفحه‌ی «امروز» ادمین نمی‌آیند؛ جای خودشان تب «گزارش من» است */
+const SK_TODAY=SK_ORDER.filter(k=>!SK[k].mine);
 if(typeof DOCS!=="undefined"&&!DOCS.some(d=>d[0]==="sayeDue")) DOCS.push(["sayeDue","مجوز سامانه سایه"]);
 
 /* ---------- برگه‌ها ---------- */
@@ -4461,6 +4714,37 @@ const DERIVE={
      if(nrm>0&&n<nrm&&!isFri(d)&&r.cause!=="جمعه / تعطیل")
        out.scores.push({id:`sh_${sh.id}_sf${i}`,kind:"shortfall",date:d,machineId:m.id,contactId:c?c.id:"",driver:drv,norm:nrm,done:n,
          cause:r.cause||"",minus:sfMinus(r.cause||"")?1:0,fromT:"",toT:"",min:0,notes:r.note||"از فرم عملکرد"}); });
+   return out; },
+ /* گزارش شخصی راننده: همان رکوردهایی که فرم کامل می‌سازد، بدون هزینه و تناژ
+    (راننده این دو را نمی‌داند؛ عدد نادرست بدتر از نبودن عدد است) */
+ drep(sh){ const d=sh.date, out={trips:[],fuel:[],stops:[],log:[],scores:[]};
+   sh.rows.forEach((r,i)=>{ const m=tdMach(r.m,HAULT); if(!m) return;
+     const n=Math.round(tdN(r.n)), drv=tdDriverOf(m)||sh.byName||"";
+     for(let k=0;k<n;k++) out.trips.push({id:`sh_${sh.id}_t${i}_${k}`,date:d,machineId:m.id,driver:drv,site:r.mine||"",kind:"مصالح",
+       material:"",tons:0,volume:0,stage:4,src:"sheet",sec:"dump"});
+     const lit=tdN(r.lit);
+     if(lit>0) out.fuel.push({id:`sh_${sh.id}_f${i}`,machineId:m.id,date:d,liters:lit,usage:tdN(r.km)||mUsage(m),cost:0,
+       station:r.stat||"",min:0,fromT:"",toT:"",src:"sheet",driver:drv,sec:"dump",notes:r.note||""});
+     const smin=tdN(r.smin);
+     if(smin>0) out.stops.push({id:`sh_${sh.id}_s${i}`,date:d,min:smin,cat:r.scause||"سایر",machineId:m.id,cost:0,
+       sec:"dump",notes:(r.scause?r.scause+" — ":"")+(r.note||"از گزارش راننده")});
+     const km=tdN(r.km);
+     if(km>0) out.log.push({id:`sh_${sh.id}_k${i}`,machineId:m.id,date:d,title:"اعلام کیلومتر از گزارش راننده",kind:"km",usage:km,cost:0,sec:"dump",notes:""});
+     const nrm=normOf(m);
+     if(nrm>0&&n<nrm&&!isFri(d)&&r.cause!=="جمعه / تعطیل")
+       out.scores.push({id:`sh_${sh.id}_sf${i}`,kind:"shortfall",date:d,machineId:m.id,contactId:(S.users.find(u=>u.id===sh.by)||{}).cid||"",
+         driver:drv,norm:nrm,done:n,cause:r.cause||"",minus:sfMinus(r.cause||"")?1:0,fromT:"",toT:"",min:0,notes:r.note||"از گزارش راننده"}); });
+   return out; },
+ /* گزارش شخصی اوپراتور بچینگ: خلاصه‌ی شیفت، نه ریز بارگیری‌ها */
+ orep(sh){ const d=sh.date, M=sh.meta||{}, out={opprod:[],stops:[]};
+   const r=(sh.rows||[])[0]||{}, pm=plantByLetter(M.plant);
+   const v=tdN(r.m3), t=tdKg(r.tons), ld=Math.round(tdN(r.loads));
+   if(pm&&(v>0||ld>0)) out.opprod.push({id:`sh_${sh.id}_op`,date:d,shift:M.shift||"",machineId:pm.id,
+     contactId:(S.users.find(u=>u.id===sh.by)||{}).cid||"",volume:+v.toFixed(1),tons:+t.toFixed(1),grade:"",loads:ld,
+     note:"گزارش اوپراتور",src:"sheet",sec:"batch"});
+   const smin=tdN(r.smin);
+   if(smin>0&&pm) out.stops.push({id:`sh_${sh.id}_s`,date:d,min:smin,cat:r.scause||"سایر",machineId:pm.id,cost:0,
+     sec:"batch",notes:(r.scause?r.scause+" — ":"")+(r.note||"از گزارش اوپراتور")});
    return out; },
  project(sh){ return {pumpjobs:sh.rows.filter(r=>tdN(r.m3)>0).map((r,i)=>{ const p=tdMach(r.pump,PUMPT), tr=tdMach(r.tr), c=tdCon(r.drv);
    return {id:`sh_${sh.id}_${i}`,date:sh.date,customer:r.cust||"",section:r.sec||"",m3:tdN(r.m3),grade:r.grade||"",pumpId:p?p.id:"",pump:p?p.name:(r.pump||""),
@@ -4540,9 +4824,19 @@ async function shApply(sh,removing){
   for(const col of touched) await persist(col);
   if(["batch"].includes(sh.kind)) await syncProdDay(sh.date);
   return msgs; }
-async function shSave(sh){ sh.at=Date.now(); const i=S.sheets.findIndex(x=>x.id===sh.id); if(i<0) S.sheets.push(sh); else S.sheets[i]=sh;
+async function shSave(sh){
+  if(roBlock()) return [];
+  if(ME&&!canForm(sh.kind)){ try{ tdToast("این فرم در دسترسی شما نیست."); }catch(e){} return []; }
+  const prev=S.sheets.find(x=>x.id===sh.id);
+  if(ME&&RLU().own&&prev&&prev.by&&prev.by!==meId()){ try{ tdToast("این برگه از شما نیست."); }catch(e){} return []; }
+  if(ME&&!sh.by){ sh.by=meId(); sh.byName=meName(); }
+  if(prev){ sh.hist=(prev.hist||[]).concat([{at:Date.now(),by:meId(),name:meName()}]).slice(-20); }
+  sh.at=Date.now(); const i=S.sheets.findIndex(x=>x.id===sh.id); if(i<0) S.sheets.push(sh); else S.sheets[i]=sh;
   await persist("sheets"); const msgs=await shApply(sh); render(); return msgs; }
-async function shDelete(id){ const sh=S.sheets.find(x=>x.id===id); if(!sh) return; await shApply(sh,true);
+async function shDelete(id){ const sh=S.sheets.find(x=>x.id===id); if(!sh) return;
+  if(roBlock()) return;
+  if(ME&&!can("d")){ try{ tdToast("حذف برگه در دسترسی شما نیست."); }catch(e){} return; }
+  await shApply(sh,true);
   S.sheets=S.sheets.filter(x=>x.id!==id); await persist("sheets"); render(); }
 
 /* ---------- خلاصه‌ی هر برگه ---------- */
@@ -4553,6 +4847,10 @@ function shSum(sh){ const R=sh.rows||[], M=sh.meta||{};
    case "mprod": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.op||r.mc).length)} ردیف • ${fa(sumBy(R,r=>tdN(r.m3)))} م³`;
    case "mpump": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.p||r.prj).length)} پروژه • ${fa(sumBy(R,r=>tdN(r.m3)))} م³`;
    case "mstaff": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.c).length)} نفر`;
+   case "drep": { const r=R[0]||{}, m=tdMach(r.m,HAULT), n=tdN(r.n), l=tdN(r.lit), sm=tdN(r.smin);
+     return `${m?esc(m.name):"دستگاه؟"} • ${fa(n)} سرویس${l?` • ${fa(l)} لیتر`:""}${sm?` • ${fa(sm)} دقیقه توقف`:""}`; }
+   case "orep": { const r=R[0]||{}, v=tdN(r.m3), ld=Math.round(tdN(r.loads)), sm=tdN(r.smin);
+     return `دستگاه ${M.plant||"?"} • ${M.shift||""}${ld?` • ${fa(ld)} بار`:""}${v?` • ${fa(v)} م³`:""}${sm?` • ${fa(sm)} دقیقه توقف`:""}`; }
    case "dump": { const n=sumBy(R,r=>tdN(r.n)), l=sumBy(R,r=>tdN(r.lit)), sm=sumBy(R,r=>tdN(r.smin));
      return `${fa(R.filter(r=>r.m).length)} دستگاه • ${fa(n)} سرویس${l?` • ${fa(l)} لیتر`:""}${sm?` • ${f1(sm/60)} ساعت توقف`:""}`; }
    case "haul": { const n=sumBy(R,r=>tdN(r.n)), t=sumBy(R,r=>tdKg(r.tons)); return `${fa(n)} سرویس • ${fa(+t.toFixed(1))} تن • ${fa(new Set(R.filter(r=>r.m).map(r=>r.m)).size)} دستگاه`; }
@@ -4591,11 +4889,334 @@ function tdTile(k,d){ const K=SK[k], L=shOf(k,d); let st=L.length?"ok":"miss", i
   if(k==="haul"&&isFri(d)&&!L.length){ st="off"; info="جمعه"; }
   return {st,info}; }
 const TD_ST={ok:["دریافت شد","ok"],part:["ناقص","soon"],miss:["منتظر","due"],warn:["هشدار","due"],off:["تعطیل",""],pre:["پیش از مبدأ",""]};
+/* ---------- پنل کاربران (فقط ادمین) ---------- */
+function uPin4(){ let p; do{ p=String(Math.floor(1000+Math.random()*9000)); }
+  while(/^(\d)\1{3}$/.test(p)||["1234","4321","1230","0123"].indexOf(p)>=0); return p; }
+function uRecCode(){ const A="ACDEFGHJKLMNPQRTUVWXY34679"; let o="";
+  for(let i=0;i<12;i++){ o+=A[Math.floor(Math.random()*A.length)]; if(i%4===3&&i<11) o+="-"; } return o; }
+const uById=i=>S.users.find(u=>u.id===i);
+const uCon=u=>u&&u.cid?S.contacts.find(c=>c.id===u.cid):null;
+
+async function uPut(u){ const i=S.users.findIndex(x=>x.id===u.id);
+  if(i<0) S.users.push(u); else S.users[i]=u;
+  await persist("users"); render(); }
+
+function vUsers(){
+  const L=S.users.slice().sort((a,b)=>URK.indexOf(a.role)-URK.indexOf(b.role)||String(a.name).localeCompare(String(b.name),"fa"));
+  const byRole={}; L.forEach(u=>{ (byRole[u.role]=byRole[u.role]||[]).push(u); });
+  const lg=S.ulog.slice(-25).reverse();
+  const lbl={login:"ورود",fail:"رمز غلط",logout:"خروج",add:"کاربر ساخته شد",edit:"کاربر تغییر کرد",pw:"رمز عوض شد",off:"غیرفعال شد",on:"فعال شد",rm:"کاربر حذف شد",rec:"بازیابی رمز ادمین"};
+  return `<div class="card"><h3>کاربران و دسترسی‌ها</h3>
+    ${!L.length?`<div class="note">هنوز کاربری ساخته نشده است. تا وقتی هیچ کاربری نباشد، اپ مثل قبل بدون ورود کار می‌کند.</div>`:""}
+    <div class="row" style="margin-top:8px;gap:6px">
+      <button class="primary" data-um="seed">${L.length?"ساخت گروهی از پرسنل":"ساخت کاربران اولیه"}</button>
+      <button class="ghost" data-um="new">＋ کاربر جدید</button>
+      ${L.some(u=>u.role==="admin")?`<button class="ghost" data-um="reccode">رمز بازیابی تازه</button>`:""}
+      ${L.length?`<button class="ghost" data-um="aclfile">فایل دسترسی سرور</button>`:""}
+    </div>
+    <div class="note" style="margin-top:8px">ورود با رمز، دسترسی‌ها را در رابط کاربری محدود می‌کند و جلوی اشتباه را می‌گیرد؛
+      اما داده روی همین دستگاه ذخیره می‌شود و رمزنگاری نشده است. مرز واقعی داده، سرویس همگام‌سازی است
+      که به هر گوشی فقط داده‌ی مجاز خودش را می‌دهد.</div></div>
+  ${URK.filter(r=>byRole[r]).map(r=>`<div class="card"><h3>${esc(urName(r))} <span class="m">${fa(byRole[r].length)} نفر</span></h3>
+    ${byRole[r].map(u=>{ const c=uCon(u), ms=(u.mach||[]).map(id=>(S.machines.find(m=>m.id===id)||{}).name).filter(Boolean);
+      return `<div class="item" style="display:flex;justify-content:space-between;align-items:center;gap:8px;${secBar(u.role==="driver"?"dump":u.role==="operator"?"batch":"")}">
+        <div><b>${esc(u.name||u.user)}</b>${u.active===false?' <span class="tag bad">غیرفعال</span>':""}${u.must?' <span class="tag due">رمز موقت</span>':""}
+          <div class="m">${esc(u.user||"")}${c?" • پرسنل: "+esc(c.name):""}${ms.length?" • "+ms.map(esc).join("، "):""}${u.plant?" • بچینگ "+esc(u.plant):""}</div>
+          <div class="m">${u.last?"آخرین ورود: "+jal(localISO(new Date(u.last)))+" ساعت "+faNum(new Date(u.last).toTimeString().slice(0,5)):"هنوز وارد نشده"}</div></div>
+        <div class="row" style="gap:4px">
+          <button class="ghost" data-um="edit" data-id="${u.id}">ویرایش</button>
+          <button class="ghost" data-um="pw" data-id="${u.id}">رمز</button>
+          <button class="ghost" data-um="${u.active===false?"on":"off"}" data-id="${u.id}">${u.active===false?"فعال":"غیرفعال"}</button>
+          <button class="bad" data-um="rm" data-id="${u.id}">حذف</button></div></div>`; }).join("")}</div>`).join("")}
+  <div class="card"><h3>تنظیمات ورود</h3>
+    <label>بعد از چند ساعت بی‌استفاده بودن، رمز دوباره پرسیده شود</label>
+    <input id="usSes" value="${esc(String(LS.get("sesH",12)))}" inputmode="numeric">
+    <button class="ghost" data-um="ses" style="margin-top:8px">ذخیره</button>
+    <div class="note" style="margin-top:6px">رمز بازیابی ادمین ${LS.get("recH","")?"تنظیم شده است":"تنظیم نشده است"}؛ آن را روی کاغذ نگه دار، چون اگر رمز ادمین را فراموش کنی راه دیگری برای باز کردن نیست.</div></div>
+  <div class="card"><h3>رویدادهای ورود</h3>
+    ${lg.length?`<div class="scrollx"><table><thead><tr><th>زمان</th><th>رویداد</th><th>کاربر</th></tr></thead><tbody>
+      ${lg.map(x=>`<tr><td>${jal(localISO(new Date(x.at)))} ${faNum(new Date(x.at).toTimeString().slice(0,5))}</td>
+        <td>${esc(lbl[x.kind]||x.kind)}</td><td>${esc(x.note||(uById(x.who)||{}).name||"")}</td></tr>`).join("")}</tbody></table></div>`
+      :'<div class="empty">رویدادی ثبت نشده</div>'}</div>`; }
+
+/* ---------- ساخت و ویرایش کاربر ---------- */
+function uRoleSel(id,v){ return `<select id="${id}">${URK.map(r=>`<option value="${r}" ${v===r?"selected":""}>${esc(urName(r))}</option>`).join("")}</select>`; }
+function uEditModal(u){
+  const isNew=!u;
+  u=u||{id:uid(),role:"driver",kind:"pin",active:true,mach:[]};
+  const dumps=S.machines.filter(m=>m.status!=="غیرفعال"&&DUMP.indexOf(m.type)>=0);
+  showModal(`<div class="tdform"><h3 style="margin:0 0 8px">${isNew?"کاربر جدید":"ویرایش "+esc(u.name||u.user)}</h3>
+    <div class="grid2">
+      <div><label>نام نمایشی</label><input id="unm" value="${esc(u.name||"")}"></div>
+      <div><label>نام ورود (لاتین، بدون فاصله)</label><input id="uus" dir="ltr" value="${esc(u.user||"")}"></div>
+      <div><label>نقش</label>${uRoleSel("url",u.role)}</div>
+      <div><label>نوع رمز</label><select id="ukd"><option value="pin" ${u.kind==="pin"?"selected":""}>عددی ۴ رقمی</option><option value="pwd" ${u.kind!=="pin"?"selected":""}>رمز کامل</option></select></div>
+      <div><label>پرسنل مرتبط</label><select id="ucd"><option value="">—</option>${staff().map(c=>`<option value="${c.id}" ${u.cid===c.id?"selected":""}>${esc(c.name)} (${esc(roleOf(c))})</option>`).join("")}</select></div>
+      <div><label>دستگاه بچینگ (برای اوپراتور)</label><select id="upl"><option value="">—</option>${["A","B","C"].map(x=>`<option ${u.plant===x?"selected":""}>${x}</option>`).join("")}</select></div>
+    </div>
+    <label style="margin-top:8px">دستگاه‌های این راننده</label>
+    <div class="ulist" style="max-height:30vh">${dumps.length?dumps.map(m=>`<label style="display:flex;gap:8px;align-items:center">
+      <input type="checkbox" class="umach" value="${m.id}" style="width:auto" ${(u.mach||[]).indexOf(m.id)>=0?"checked":""}> ${esc(m.name)} <span class="m">${esc(m.type)}</span></label>`).join("")
+      :'<div class="note">دستگاه کمپرسی/تریلی فعالی ثبت نشده است.</div>'}</div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="uac" type="checkbox" style="width:auto" ${u.active!==false?"checked":""}> فعال باشد</label>
+    ${isNew?`<label style="margin-top:8px">رمز اولیه ${u.kind==="pin"?"(۴ رقم)":""}</label><input id="upw" dir="ltr" value="${uPin4()}">`:""}
+    <div class="note" id="uerr" style="margin-top:6px;color:var(--bad)"></div>
+    <div class="row" style="margin-top:10px;gap:6px"><button class="primary" data-um="save" data-id="${u.id}" data-new="${isNew?1:0}">ذخیره</button>
+      <button class="ghost" data-jdclose="1">بستن</button></div></div>`); }
+
+function uPwModal(u,self){
+  showModal(`<div class="tdform"><h3 style="margin:0 0 8px">رمز ${esc(u.name||u.user)}</h3>
+    ${u.must&&self?'<div class="note" style="color:var(--due)">رمز فعلی موقت است؛ لطفاً عوضش کن.</div>':""}
+    <label>رمز تازه ${u.kind==="pin"?"(۴ رقم)":"(حداقل ۶ نویسه)"}</label><input id="pw1" type="password" dir="ltr" ${u.kind==="pin"?'inputmode="numeric" maxlength="8"':""}>
+    <label>یک بار دیگر</label><input id="pw2" type="password" dir="ltr" ${u.kind==="pin"?'inputmode="numeric" maxlength="8"':""}>
+    <div class="note" id="pwerr" style="margin-top:6px;color:var(--bad)"></div>
+    <div class="row" style="margin-top:10px;gap:6px"><button class="primary" data-um="pwsave" data-id="${u.id}">ذخیره رمز</button>
+      ${u.kind==="pin"?`<button class="ghost" data-um="pwrnd" data-id="${u.id}">رمز تصادفی بساز</button>`:""}
+      <button class="ghost" data-jdclose="1">بستن</button></div></div>`); }
+
+/* ---------- ساخت گروهی ---------- */
+function uSeedModal(){
+  const taken={}; S.users.forEach(u=>{ if(u.cid) taken[u.cid]=u; });
+  const guess=c=>{ const r=roleOf(c);
+    if(r==="سرشوفر") return "chief";
+    if(r==="اپراتور بچینگ") return "operator";
+    if(r==="راننده"){ const m=S.machines.find(m=>m.id===c.machineId); return m&&DUMP.indexOf(m.type)>=0?"driver":""; }
+    return ""; };
+  const L=staff().filter(c=>!taken[c.id]);
+  const hasAdmin=S.users.some(u=>u.role==="admin"&&u.active!==false);
+  showModal(`<div class="tdform"><h3 style="margin:0 0 6px">ساخت کاربران</h3>
+    <div class="note">برای هر نفر نقشش را انتخاب کن. «—» یعنی کاربر ساخته نشود. رمز عددی چهاررقمی خودکار ساخته و یک بار نشان داده می‌شود.</div>
+    ${hasAdmin?"":`<div class="card" style="margin-top:8px"><h3 style="margin:0 0 6px">حساب ادمین (خودت)</h3>
+      <div class="grid2"><div><label>نام</label><input id="sdnm" value="دستیار سرپرست"></div>
+        <div><label>نام ورود</label><input id="sdus" dir="ltr" value="admin"></div></div>
+      <label>رمز (حداقل ۶ نویسه)</label><input id="sdp1" type="password" dir="ltr">
+      <label>یک بار دیگر</label><input id="sdp2" type="password" dir="ltr">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="sdmg" type="checkbox" style="width:auto" checked> یک حساب «مدیر کارخانه — فقط مشاهده» هم ساخته شود</label></div>`}
+    <label style="margin-top:8px">پرسنل</label>
+    <div class="ulist" style="max-height:40vh">${L.length?L.map(c=>`<div class="item" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b>${esc(c.name)}</b><div class="m">${esc(roleOf(c))}${c.machineId?" • "+esc((S.machines.find(m=>m.id===c.machineId)||{}).name||""):""}</div></div>
+      <select class="sdrole" data-cid="${c.id}"><option value="">—</option>${URK.filter(r=>r!=="admin").map(r=>`<option value="${r}" ${guess(c)===r?"selected":""}>${esc(urName(r))}</option>`).join("")}</select></div>`).join("")
+      :'<div class="note">همه‌ی پرسنل قبلاً کاربر دارند.</div>'}</div>
+    <div class="note" id="sderr" style="margin-top:6px;color:var(--bad)"></div>
+    <div class="row" style="margin-top:10px;gap:6px"><button class="primary" data-um="seedgo">بساز</button><button class="ghost" data-jdclose="1">بستن</button></div></div>`); }
+
+function uShowCreds(list,rec){
+  const txt=list.map(x=>`${x.name}: ${x.pw}`).join("\n");
+  showModal(`<div class="tdform"><h3 style="margin:0 0 6px">رمزها را همین حالا بردار</h3>
+    <div class="note" style="color:var(--due)">این صفحه دیگر نشان داده نمی‌شود. رمزها را به صاحبانشان بده و بگو عوضش کنند.</div>
+    ${rec?`<div class="card" style="margin-top:8px;border-inline-start:4px solid var(--bad)"><h3 style="margin:0 0 4px">رمز بازیابی ادمین</h3>
+      <div dir="ltr" style="font-size:18px;letter-spacing:2px;text-align:center;margin:6px 0"><b>${esc(rec)}</b></div>
+      <div class="note">روی کاغذ بنویس و جای مطمئن بگذار. اگر رمز ادمین را فراموش کنی، فقط با این کد می‌توانی آن را عوض کنی.</div></div>`:""}
+    ${list.length?`<div class="scrollx"><table><thead><tr><th>کاربر</th><th>رمز</th></tr></thead><tbody>
+      ${list.map(x=>`<tr><td>${esc(x.name)} <span class="m">${esc(urName(x.role))}</span></td><td dir="ltr"><b style="font-size:16px;letter-spacing:2px">${esc(x.pw)}</b></td></tr>`).join("")}</tbody></table></div>`:""}
+    <div class="row" style="margin-top:10px;gap:6px">${list.length?`<button class="ghost" data-um="copycred" data-txt="${esc(txt)}">کپی فهرست</button>`:""}
+      <button class="primary" data-jdclose="1">برداشتم</button></div></div>`); }
+
+/* ---------- فایل دسترسی سرور همگام‌سازی ---------- */
+/* هر کاربر یک توکن اختصاصی می‌گیرد. سرویس همگام‌سازی با همین توکن تشخیص
+   می‌دهد طرف کیست و فقط داده‌ی مجاز او را می‌دهد و می‌پذیرد. تا وقتی این
+   فایل روی سرور نباشد، سرویس مثل قبل با APP_TOKEN و دسترسی کامل کار می‌کند. */
+async function aclBuild(){
+  let changed=false;
+  for(const u of S.users){ if(u.active===false) continue; if(!u.stok){ u.stok=rndHex(24); changed=true; } }
+  if(changed) await persist("users");
+  const users=S.users.filter(u=>u.active!==false).map(u=>{
+    const R=UROLES[u.role]||UROLES.driver;
+    const mach=(u.mach||[]).slice();
+    /* سرشوفر و هر نقش بخشی: همه‌ی دستگاه‌های بخش‌های مجازش را می‌بیند */
+    if(R.secs!=="*"&&!R.own) S.machines.forEach(m=>{ if(R.secs.indexOf(secByType(m.type))>=0&&mach.indexOf(m.id)<0) mach.push(m.id); });
+    return {token:u.stok,uid:u.id,name:u.name||u.user,role:u.role,cid:u.cid||"",
+      full:R.secs==="*"&&!R.own, own:!!R.own, w:!!R.w,
+      secs:R.secs==="*"?null:R.secs.slice(), mach};
+  });
+  return {app:"sobhan-beton",made:new Date().toISOString(),note:"این فایل را در /opt/sobhan/sync-users.json بگذار و سرویس را دوباره راه بیانداز.",users}; }
+
+function aclModal(j){
+  showModal(`<div class="tdform"><h3 style="margin:0 0 6px">فایل دسترسی سرور ساخته شد</h3>
+    <div class="note">فایل را روی سرور بگذار:<br><code dir="ltr">/opt/sobhan/sync-users.json</code><br>
+      بعد: <code dir="ltr">sudo systemctl restart sobhan-sync</code></div>
+    <div class="note" style="margin-top:8px;color:var(--due)">توکن هر نفر را فقط یک بار و فقط در تنظیمات همگام‌سازی گوشی خودش وارد کن.
+      هر بار این فایل را بسازی، توکن‌های تازه برای کاربران بی‌توکن ساخته می‌شود؛ توکن‌های قبلی عوض نمی‌شوند.</div>
+    <div class="scrollx"><table><thead><tr><th>کاربر</th><th>دسترسی</th><th>توکن</th></tr></thead><tbody>
+      ${j.users.map(u=>`<tr><td>${esc(u.name)}</td><td>${u.full?(u.w?"کامل":"کامل، فقط خواندن"):u.own?"فقط خودش":"بخش "+(u.secs||[]).map(x=>esc(secN(x))).join("، ")+(u.w?"":"، فقط خواندن")}</td>
+        <td dir="ltr" style="font-size:11px;word-break:break-all">${esc(u.token)}</td></tr>`).join("")}</tbody></table></div>
+    <div class="row" style="margin-top:10px;gap:6px"><button class="primary" data-um="acldl">گرفتن فایل</button>
+      <button class="ghost" data-um="aclcopy">کپی توکن‌ها</button><button class="ghost" data-jdclose="1">بستن</button></div></div>`);
+  window.__acl=j; }
+
+/* ---------- بازیابی رمز ادمین ---------- */
+function uRecModal(){
+  showModal(`<div class="tdform"><h3 style="margin:0 0 6px">بازیابی رمز ادمین</h3>
+    ${LS.get("recH","")?`<div class="note">کد بازیابی را وارد کن و رمز تازه بگذار.</div>
+    <label>کد بازیابی</label><input id="rc0" dir="ltr" placeholder="XXXX-XXXX-XXXX">
+    <label>رمز تازه‌ی ادمین</label><input id="rc1" type="password" dir="ltr">
+    <label>یک بار دیگر</label><input id="rc2" type="password" dir="ltr">
+    <div class="note" id="rcerr" style="margin-top:6px;color:var(--bad)"></div>
+    <div class="row" style="margin-top:10px;gap:6px"><button class="primary" data-um="recgo">ذخیره</button><button class="ghost" data-jdclose="1">بستن</button></div>`
+    :`<div class="note">کد بازیابی روی این دستگاه تنظیم نشده است، پس رمز ادمین از اینجا قابل بازنشانی نیست.
+      اگر روی دستگاه دیگری ادمین هستی، از همان‌جا رمز را عوض کن و بگذار همگام‌سازی انجام شود.</div>
+      <div class="row" style="margin-top:10px"><button class="ghost" data-jdclose="1">بستن</button></div>`}</div>`); }
+
+/* ---------- رویدادهای پنل ---------- */
+document.addEventListener("click",async e=>{
+  const b=e.target.closest&&e.target.closest("[data-um]"); if(!b) return;
+  const a=b.dataset.um, g=n=>{const el=document.getElementById(n);return el?el.value.trim():"";};
+  const err=(n,t)=>{const el=document.getElementById(n);if(el)el.textContent=t;};
+  try{
+  if(a==="logout"){ if(confirm("از حساب خارج شوی؟")) await uLogout(); return; }
+  if(a==="mypw"){ if(ME) uPwModal(ME,true); return; }
+  if(a==="lock"){ showLock(true); return; }
+  if(a==="forgot"){ uRecModal(); return; }
+
+  if(!can("set")){ try{ tdToast("این بخش فقط برای ادمین است."); }catch(x){} return; }
+
+  if(a==="new"){ uEditModal(null); return; }
+  if(a==="edit"){ const u=uById(b.dataset.id); if(u) uEditModal(u); return; }
+  if(a==="pw"){ const u=uById(b.dataset.id); if(u) uPwModal(u,false); return; }
+  if(a==="seed"){ uSeedModal(); return; }
+  if(a==="ses"){ const v=Math.max(1,Math.min(720,+toEn(g("usSes"))||12)); LS.set("sesH",v); render(); try{ tdToast("ذخیره شد."); }catch(x){} return; }
+  if(a==="copycred"){ try{ await navigator.clipboard.writeText(b.dataset.txt); tdToast("کپی شد."); }catch(x){ alert(b.dataset.txt); } return; }
+
+  if(a==="off"||a==="on"){ const u=uById(b.dataset.id); if(!u) return;
+    if(a==="off"&&u.role==="admin"&&S.users.filter(x=>x.role==="admin"&&x.active!==false).length<2) return alert("آخرین ادمین را نمی‌توان غیرفعال کرد.");
+    u.active=(a==="on"); await uPut(u); await uLog(a,u.name||u.user,u.id); return; }
+
+  if(a==="rm"){ const u=uById(b.dataset.id); if(!u) return;
+    if(u.role==="admin"&&S.users.filter(x=>x.role==="admin"&&x.active!==false).length<2) return alert("آخرین ادمین را نمی‌توان حذف کرد.");
+    if(!confirm("کاربر «"+(u.name||u.user)+"» حذف شود؟ برگه‌های ثبت‌شده‌اش دست‌نخورده می‌مانند.")) return;
+    S.users=S.users.filter(x=>x.id!==u.id); await persist("users"); await uLog("rm",u.name||u.user,u.id); render(); return; }
+
+  if(a==="save"){
+    const isNew=b.dataset.new==="1", old=uById(b.dataset.id);
+    const nm=g("unm"), us=g("uus").toLowerCase(), rl=g("url"), kd=g("ukd");
+    if(!nm) return err("uerr","نام نمایشی را بنویس.");
+    if(!/^[a-z0-9._-]{3,24}$/.test(us)) return err("uerr","نام ورود باید ۳ تا ۲۴ نویسه‌ی لاتین، رقم، نقطه یا خط تیره باشد.");
+    if(S.users.some(x=>x.user===us&&x.id!==b.dataset.id)) return err("uerr","این نام ورود قبلاً استفاده شده است.");
+    if(isNew&&!S.users.length&&rl!=="admin") return err("uerr","اولین کاربر باید ادمین باشد، وگرنه بعد از ساختن، خودت هم نمی‌توانی وارد شوی.");
+    if(isNew&&!S.users.length&&kd==="pin") return err("uerr","برای حساب ادمین رمز کامل بگذار، نه رمز عددی.");
+    const mach=[].slice.call(document.querySelectorAll(".umach")).filter(x=>x.checked).map(x=>x.value);
+    const u=Object.assign({},old||{},{id:b.dataset.id,name:nm,user:us,role:rl,kind:kd,cid:g("ucd"),plant:g("upl"),mach,
+      active:(document.getElementById("uac")||{}).checked!==false});
+    if(isNew){ const pw=toEn(g("upw"));
+      if(kd==="pin"&&!/^\d{4,8}$/.test(pw)) return err("uerr","رمز عددی باید ۴ تا ۸ رقم باشد.");
+      if(kd!=="pin"&&pw.length<6) return err("uerr","رمز باید حداقل ۶ نویسه باشد.");
+      err("uerr","در حال ساخت رمز..."); Object.assign(u,await pwMake(pw)); u.must=true; u.at=Date.now();
+      const first=!S.users.length;
+      await uPut(u); await uLog("add",nm,u.id);
+      let rec="";
+      if(first&&u.role==="admin"){ ME=u; sesSave(); rec=uRecCode(); LS.set("recH",await pwMake(rec)); render(); }
+      modalClose(); uShowCreds([{name:nm,role:rl,pw}],rec); return; }
+    await uPut(u); await uLog("edit",nm,u.id); modalClose(); try{ tdToast("ذخیره شد."); }catch(x){} return; }
+
+  if(a==="pwrnd"){ const p=uPin4(); const e1=document.getElementById("pw1"), e2=document.getElementById("pw2");
+    if(e1&&e2){ e1.value=p; e2.value=p; e1.type="text"; e2.type="text"; } return; }
+
+  if(a==="pwsave"){ const u=uById(b.dataset.id); if(!u) return;
+    const self=ME&&ME.id===u.id;
+    if(!self&&!can("set")) return;
+    const p1=u.kind==="pin"?toEn(g("pw1")):g("pw1"), p2=u.kind==="pin"?toEn(g("pw2")):g("pw2");
+    if(p1!==p2) return err("pwerr","دو رمز یکی نیست.");
+    if(u.kind==="pin"&&!/^\d{4,8}$/.test(p1)) return err("pwerr","رمز عددی باید ۴ تا ۸ رقم باشد.");
+    if(u.kind!=="pin"&&p1.length<6) return err("pwerr","رمز باید حداقل ۶ نویسه باشد.");
+    err("pwerr","در حال ساخت رمز...");
+    Object.assign(u,await pwMake(p1)); u.must=!self;
+    await uPut(u); await uLog("pw",u.name||u.user,u.id); modalClose();
+    if(self){ ME=u; sesSave(); }
+    try{ tdToast("رمز عوض شد."); }catch(x){} return; }
+
+  if(a==="seedgo"){
+    const need=!S.users.some(u=>u.role==="admin"&&u.active!==false);
+    const picks=[].slice.call(document.querySelectorAll(".sdrole")).filter(x=>x.value).map(x=>({cid:x.dataset.cid,role:x.value}));
+    let adm=null, mg=false;
+    if(need){ const p1=g("sdp1"), p2=g("sdp2");
+      if(p1!==p2) return err("sderr","دو رمز ادمین یکی نیست.");
+      if(p1.length<6) return err("sderr","رمز ادمین باید حداقل ۶ نویسه باشد.");
+      adm={nm:g("sdnm")||"ادمین,",us:(g("sdus")||"admin").toLowerCase(),pw:p1};
+      mg=(document.getElementById("sdmg")||{}).checked!==false; }
+    if(!need&&!picks.length) return err("sderr","هیچ نقشی انتخاب نشده است.");
+    err("sderr","در حال ساخت کاربران و رمزها...");
+    const made=[]; let rec="";
+    if(adm){ const u={id:uid(),name:adm.nm.replace(/,$/,""),user:adm.us,role:"admin",kind:"pwd",active:true,mach:[],at:Date.now()};
+      Object.assign(u,await pwMake(adm.pw)); S.users.push(u);
+      rec=uRecCode(); const rh=await pwMake(rec); LS.set("recH",rh);
+      if(mg){ const pw=uPin4(), m={id:uid(),name:"مدیر کارخانه",user:"modir",role:"manager",kind:"pin",active:true,mach:[],must:true,at:Date.now()};
+        Object.assign(m,await pwMake(pw)); S.users.push(m); made.push({name:m.name,role:m.role,pw}); } }
+    for(const p of picks){ const c=S.contacts.find(x=>x.id===p.cid); if(!c) continue;
+      const base=("u"+String(c.name||"").replace(/[^A-Za-z0-9]/g,"")).toLowerCase();
+      let us=base.length>2?base:"u"+String(S.users.length+1), k=1;
+      while(S.users.some(x=>x.user===us)){ us=(base.length>2?base:"u")+(++k); }
+      const pw=uPin4();
+      const u={id:uid(),name:c.name,user:us,role:p.role,kind:"pin",cid:c.id,active:true,must:true,at:Date.now(),
+        mach:c.machineId&&S.machines.some(m=>m.id===c.machineId&&DUMP.indexOf(m.type)>=0)?[c.machineId]:[]};
+      Object.assign(u,await pwMake(pw)); S.users.push(u); made.push({name:c.name,role:p.role,pw}); }
+    await persist("users"); await uLog("add",fa(made.length+(adm?1:0))+" کاربر");
+    if(adm&&!ME){ ME=S.users.find(u=>u.role==="admin"&&u.active!==false)||null; sesSave(); }
+    modalClose(); render(); uShowCreds(made,rec); return; }
+
+  if(a==="aclfile"){ aclModal(await aclBuild()); return; }
+  if(a==="acldl"){ const j=window.__acl; if(!j) return;
+    await saveShare("sync-users.json",new TextEncoder().encode(JSON.stringify(j,null,1)),"application/json"); return; }
+  if(a==="aclcopy"){ const j=window.__acl; if(!j) return;
+    const t=j.users.map(u=>u.name+": "+u.token).join("\n");
+    try{ await navigator.clipboard.writeText(t); tdToast("کپی شد."); }catch(x){ alert(t); } return; }
+  if(a==="reccode"){ if(!confirm("کد بازیابی تازه ساخته شود؟ کد قبلی باطل می‌شود.")) return;
+    const rec=uRecCode(); LS.set("recH",await pwMake(rec)); await uLog("rec","کد بازیابی تازه"); uShowCreds([],rec); return; }
+
+  if(a==="recgo"){
+    const rh=LS.get("recH",""); if(!rh) return err("rcerr","کد بازیابی تنظیم نشده است.");
+    const ok=await pwOk(rh,g("rc0").toUpperCase().replace(/\s/g,""));
+    if(ok===null) return err("rcerr","روی این دستگاه قابل بررسی نیست.");
+    if(!ok) return err("rcerr","کد بازیابی درست نیست.");
+    const p1=g("rc1"), p2=g("rc2");
+    if(p1!==p2) return err("rcerr","دو رمز یکی نیست.");
+    if(p1.length<6) return err("rcerr","رمز باید حداقل ۶ نویسه باشد.");
+    const u=S.users.find(x=>x.role==="admin"); if(!u) return err("rcerr","حساب ادمینی پیدا نشد.");
+    Object.assign(u,await pwMake(p1)); u.active=true; u.must=false;
+    await persist("users"); await uLog("rec","رمز ادمین بازنشانی شد",u.id);
+    modalClose(); lockUser=u.id; showLock(true); try{ tdToast("رمز ادمین عوض شد؛ وارد شو."); }catch(x){} return; }
+  }catch(ex){ try{ alert("خطا: "+((ex&&ex.message)||ex)); }catch(x){} }
+});
+
+/* منوی کاربر در هدر */
+document.addEventListener("click",e=>{
+  if(!e.target||e.target.id!=="meBtn"||!ME) return;
+  showModal(`<div class="tdform"><h3 style="margin:0 0 6px">${esc(meName())}</h3>
+    <div class="m" style="margin-bottom:10px">${esc(urName(ME.role))}${isRO()?" • فقط مشاهده":""}</div>
+    <div class="row" style="gap:6px;flex-direction:column">
+      <button class="ghost" data-um="mypw" style="width:100%">تغییر رمز من</button>
+      <button class="ghost" data-um="lock" style="width:100%">قفل کردن اپ</button>
+      <button class="bad" data-um="logout" style="width:100%">خروج از حساب</button>
+      <button class="ghost" data-jdclose="1" style="width:100%">بستن</button></div></div>`); });
+
+/* ---------- گزارش من (راننده و اوپراتور) ---------- */
+function myKind(){ const f=RLU().forms; return (f!=="*"&&f.length)?f[0]:"drep"; }
+function mySheets(){ const k=myKind(); return S.sheets.filter(x=>x.kind===k&&x.by===meId()).sort((a,b)=>b.date<a.date?-1:1); }
+function vMy(){
+  const k=myKind(), K=SK[k], T=todayISO(), Y=addDays(T,-1);
+  const L=mySheets(), mine=myMachList();
+  const dayHas=d=>L.some(x=>x.date===d);
+  const st0=startISO();
+  const row=(d,lbl)=>{ const sh=L.find(x=>x.date===d), early=st0&&d<st0;
+    return `<button class="tdt ${sh?"ok":early?"pre":"miss"}" data-td="${sh?"edit":"new"}" ${sh?`data-id="${sh.id}"`:`data-k="${k}" data-d="${d}"`}>
+      <span class="ic">${K.ic}</span><span class="tx"><b>${lbl} — ${jal(d)}</b><small>${sh?shSum(sh):early?"پیش از مبدأ ثبت کامل":"ثبت نشده"}</small></span>
+      <span class="tag ${sh?"ok":early?"":"due"}">${sh?"ویرایش":early?"—":"ثبت کن"}</span></button>`; };
+  const old=L.filter(x=>x.date!==T&&x.date!==Y).slice(0,14);
+  return `<div class="card" style="border-inline-start:4px solid ${tabC("my")}">
+      <h3>${esc(meName())}</h3>
+      <div class="m">${esc(urName(ME?ME.role:""))}${mine.length?" • "+mine.map(m=>esc(m.name)).join("، "):(ME&&ME.role==="driver"?" • دستگاهی برای شما ثبت نشده؛ از سرپرست بخواه":"")}</div>
+      ${ME&&ME.role==="operator"&&ME.plant?`<div class="m">دستگاه بچینگ: ${esc(ME.plant)}</div>`:""}
+      <div class="note" style="margin-top:8px">فقط گزارش خودت را می‌بینی و ثبت می‌کنی. هر ویرایش با نام و ساعت ثبت می‌شود.</div>
+    </div>
+    <div class="card"><h3>گزارش روزانه</h3><div class="tdgrid">${row(Y,"دیروز")}${row(T,"امروز")}</div>
+      ${!dayHas(Y)&&!(st0&&Y<st0)?`<div class="note" style="margin-top:8px;color:var(--due)">گزارش دیروز هنوز ثبت نشده است.</div>`:""}</div>
+    ${old.length?`<div class="card"><h3>گزارش‌های قبلی</h3><div class="tdgrid">${old.map(x=>
+      `<button class="tdt ok" data-td="edit" data-id="${x.id}"><span class="ic">${K.ic}</span><span class="tx"><b>${jal(x.date)}</b><small>${shSum(x)}</small></span><span class="tag">ویرایش</span></button>`).join("")}</div></div>`:""}
+    <div class="card"><h3>حساب من</h3><div class="row"><button class="ghost" data-um="mypw">تغییر رمز من</button><button class="ghost" data-um="logout">خروج از حساب</button></div></div>`; }
+
 function vToday(){ const T=tdDay||todayISO(), Y=addDays(T,-1);
   const tile=(k,d)=>{ const K=SK[k], s=tdTile(k,d), [lb,cl]=TD_ST[s.st];
     return `<button class="tdt ${s.st}" data-td="open" data-k="${k}" data-d="${d}"><span class="ic">${K.ic}</span><span class="tx"><b>${K.t}</b><small>${s.info}</small></span><span class="tag ${cl}">${lb}</span></button>`; };
   const pend=S.sms.filter(x=>x.status==="new").length;
-  const miss=SK_ORDER.filter(k=>!SK[k].week&&!SK[k].mon&&k!=="saye"&&k!=="waste"&&k!=="leave"&&["miss"].includes(tdTile(k,SK[k].lag?Y:T).st)).length;
+  const miss=SK_TODAY.filter(k=>!SK[k].week&&!SK[k].mon&&k!=="saye"&&k!=="waste"&&k!=="leave"&&["miss"].includes(tdTile(k,SK[k].lag?Y:T).st)).length;
   const st0=startISO(), early=st0&&T<st0;
   return `<div class="card tdhead">
     <div class="row" style="justify-content:space-between;align-items:center"><div><h2 style="margin:0">ورودی‌های ${T===todayISO()?"امروز":jal(T)}</h2>
@@ -4612,8 +5233,8 @@ function vToday(){ const T=tdDay||todayISO(), Y=addDays(T,-1);
     </div>
   ${early?`<div class="card" style="border-inline-start:4px solid var(--due)"><h3>این روز پیش از مبدأ ثبت کامل است</h3>
     <div class="note">ثبت کامل روزانه از ${jal(st0)} شروع می‌شود، پس برای ${jal(T)} چیزی «جاافتاده» حساب نمی‌شود. آمار ماه‌های قبل را از فرم‌های «ماه گذشته» پایین همین صفحه وارد کن.</div></div>`:""}
-  <div class="card"><h3>صبح — کارکرد ${jal(Y)} <span class="m">(گزارش‌های ساعت ۸)</span></h3><div class="tdgrid">${SK_ORDER.filter(k=>SK[k].lag).map(k=>tile(k,Y)).join("")}</div></div>
-  <div class="card"><h3>فرم‌های ${jal(T)}</h3><div class="tdgrid">${SK_ORDER.filter(k=>!SK[k].lag&&!SK[k].week&&!["ibatch","saye"].includes(k)).map(k=>tile(k,T)).join("")}</div></div>
+  <div class="card"><h3>صبح — کارکرد ${jal(Y)} <span class="m">(گزارش‌های ساعت ۸)</span></h3><div class="tdgrid">${SK_TODAY.filter(k=>SK[k].lag).map(k=>tile(k,Y)).join("")}</div></div>
+  <div class="card"><h3>فرم‌های ${jal(T)}</h3><div class="tdgrid">${SK_TODAY.filter(k=>!SK[k].lag&&!SK[k].week&&!["ibatch","saye"].includes(k)).map(k=>tile(k,T)).join("")}</div></div>
   <div class="card"><h3>بازدیدها و مجوزها</h3><div class="tdgrid">${["imix","ipump","ibatch","saye"].map(k=>tile(k,T)).join("")}</div>
     ${pend?`<div class="row" style="margin-top:8px"><button class="ghost" data-tab="sms">پیامک‌های بررسی‌نشده (${fa(pend)})</button></div>`:""}</div>
   <div class="card"><h3>ماه گذشته — ورود دستی</h3>
@@ -5168,7 +5789,9 @@ render(); load();
   /* ---------- کمک‌ها ---------- */
   function cfg() { try { return (typeof LS !== "undefined" ? LS.get("syncCfg", {}) : {}) || {}; } catch (e) { return {}; } }
   function appCfg() { try { return (typeof LS !== "undefined" ? LS.get("cfg", {}) : {}) || {}; } catch (e) { return {}; } }
-  function token() { return cfg().token || appCfg().token || ""; }
+  /* توکن اختصاصی کاربرِ وارد‌شده مقدم است؛ پیش از ورود، همان توکنی که
+     ادمین هنگام راه‌اندازی این دستگاه گذاشته است استفاده می‌شود. */
+  function token() { try { if (typeof ME !== "undefined" && ME && ME.stok) return ME.stok; } catch (e) {} return cfg().token || appCfg().token || ""; }
   function url() { return (cfg().url || "").replace(/\/+$/, ""); }
   function fnum(n) { try { return typeof fa === "function" ? fa(n) : String(n); } catch (e) { return String(n); } }
 
@@ -5221,6 +5844,7 @@ render(); load();
   /* ---------- پوشاندن هسته ---------- */
   window.persist = function (col) { stamp(col); return _persist(col); };
   window.del = async function (col, id) {
+    if (typeof roBlock === "function" && roBlock()) return;
     if (!applying) {
       tombs.push({ c: col, id: id, u: Date.now() });
       if (shadow[col]) delete shadow[col][id];
