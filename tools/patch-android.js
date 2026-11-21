@@ -64,6 +64,29 @@ if (fs.existsSync(ICONS)) {
   console.log("پوشه‌ی آیکون نیست؛ آیکون پیش‌فرض Capacitor می‌ماند.");
 }
 
+/* ۱-ج — نسخه‌ی APK از روی APP_BUILD داخل index.html
+   تا نسخه‌ای که در اطلاعات برنامه‌ی اندروید دیده می‌شود با آنچه بالای
+   صفحه‌ی اپ نوشته شده یکی باشد. versionCode باید عدد صعودی باشد،
+   وگرنه اندروید نصب روی نسخه‌ی قبلی را رد می‌کند. */
+const GRADLE = path.join(APP, "build.gradle");
+try {
+  const html = fs.readFileSync(path.join(ROOT, "www", "index.html"), "utf8");
+  const mv = html.match(/APP_BUILD\s*=\s*"([^"]+)"/);
+  const ver = mv && /^\d+(\.\d+){0,2}$/.test(mv[1].trim()) ? mv[1].trim() : null;
+  if (!ver) {
+    console.log("نسخه‌ی عددی در APP_BUILD نبود؛ نسخه‌ی APK دست‌نخورده ماند.");
+  } else {
+    const p3 = ver.split(".").map(Number);
+    const code = (p3[0] || 0) * 10000 + (p3[1] || 0) * 100 + (p3[2] || 0);
+    let g = fs.readFileSync(GRADLE, "utf8");
+    const before = g;
+    g = g.replace(/versionName\s+"[^"]*"/, 'versionName "' + ver + '"');
+    g = g.replace(/versionCode\s+\d+/, "versionCode " + code);
+    if (g === before) console.log("الگوی نسخه در build.gradle پیدا نشد.");
+    else { fs.writeFileSync(GRADLE, g); console.log("نسخه‌ی APK:", ver, "(کد " + code + ")"); }
+  }
+} catch (e) { console.log("تنظیم نسخه‌ی APK انجام نشد:", e.message); }
+
 /* ۲ — مجوزها و تنظیمات منیفست */
 let m = fs.readFileSync(MAN, "utf8");
 const perms = [

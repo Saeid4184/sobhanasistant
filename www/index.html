@@ -228,7 +228,7 @@ const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۱ آذر — ۱۶";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const APP_BUILD="1.0.16";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum","users","ulog"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[],users:[],ulog:[]};
 let DB=null, SAMPLE=null, ready=false;
