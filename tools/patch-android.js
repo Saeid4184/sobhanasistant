@@ -26,6 +26,44 @@ for (const f of fs.readdirSync(OVER).filter(x => x.endsWith(".java"))) {
   console.log("کپی شد:", f);
 }
 
+/* ۱-ب — آیکون برنامه (لوگوی سبحان بتن)
+   Capacitor آیکون پیش‌فرض خودش را می‌گذارد، پس هر بار باید جایگزین شود.
+   برای اندروید ۸ به بالا آیکون تطبیقی هم لازم است، وگرنه همان پیش‌فرض
+   نمایش داده می‌شود حتی اگر ic_launcher.png عوض شده باشد. */
+const ICONS = path.join(OVER, "icons");
+const RES = path.join(APP, "src", "main", "res");
+if (fs.existsSync(ICONS)) {
+  let n = 0;
+  for (const d of fs.readdirSync(ICONS)) {
+    const from = path.join(ICONS, d), to = path.join(RES, d);
+    if (!fs.statSync(from).isDirectory()) continue;
+    fs.mkdirSync(to, { recursive: true });
+    for (const f of fs.readdirSync(from)) { fs.copyFileSync(path.join(from, f), path.join(to, f)); n++; }
+  }
+  /* آیکون تطبیقی: پس‌زمینه‌ی سفید + لوگو */
+  const v26 = path.join(RES, "mipmap-anydpi-v26");
+  fs.mkdirSync(v26, { recursive: true });
+  const xml = '<?xml version="1.0" encoding="utf-8"?>\n' +
+    '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n' +
+    '    <background android:drawable="@color/ic_launcher_background"/>\n' +
+    '    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n' +
+    '</adaptive-icon>\n';
+  fs.writeFileSync(path.join(v26, "ic_launcher.xml"), xml);
+  fs.writeFileSync(path.join(v26, "ic_launcher_round.xml"), xml);
+  const vals = path.join(RES, "values");
+  fs.mkdirSync(vals, { recursive: true });
+  fs.writeFileSync(path.join(vals, "ic_launcher_background.xml"),
+    '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#FFFFFF</color>\n</resources>\n');
+  /* پس‌زمینه‌ی تصویری پیش‌فرض Capacitor اگر بماند، بر رنگ بالا مقدم می‌شود */
+  for (const d of fs.readdirSync(RES)) {
+    const f = path.join(RES, d, "ic_launcher_background.png");
+    if (fs.existsSync(f)) { fs.unlinkSync(f); console.log("پس‌زمینه‌ی پیش‌فرض حذف شد:", d); }
+  }
+  console.log("آیکون اعمال شد:", n, "فایل");
+} else {
+  console.log("پوشه‌ی آیکون نیست؛ آیکون پیش‌فرض Capacitor می‌ماند.");
+}
+
 /* ۲ — مجوزها و تنظیمات منیفست */
 let m = fs.readFileSync(MAN, "utf8");
 const perms = [
