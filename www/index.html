@@ -59,7 +59,7 @@ nav button{
 nav button.active{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:700}
 main{padding:14px 12px 90px;max-width:900px;margin:0 auto}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:12px}
-.card h3{margin:0 0 8px;font-size:15px}
+.card h3{margin:0 0 8px;font-size:15px;border-inline-start:3px solid var(--tabc,#1f6feb);padding-inline-start:7px}
 .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:11px}
 .kpi .n{font-size:22px;font-weight:700;line-height:1.2}
@@ -202,10 +202,27 @@ const TABS=[
 ];
 const MTYPES=["میکسر","پمپ بتن","کشنده","لودر","کمپرسی","کمپرسی تریلی","بچینگ","دیزل ژنراتور","تانکر آب","سایر"];
 const DUMP=["کمپرسی","کمپرسی تریلی"];
+/* ---- بخش‌ها: هر بخش رنگ خودش را دارد و داده‌هایش با همان رنگ ذخیره و نشان داده می‌شوند ---- */
+const SECS={dump:{name:"کمپرسی و تریلی",c:"#d97706",types:["کمپرسی","کمپرسی تریلی"]},
+  mixer:{name:"میکسر",c:"#1f6feb",types:["میکسر"]},
+  pump:{name:"پمپ و کشنده",c:"#7c3aed",types:["پمپ بتن","کشنده"]},
+  batch:{name:"بچینگ",c:"#0e9f6e",types:["بچینگ"]},
+  aux:{name:"ماشین‌های پشتیبان",c:"#0891b2",types:["لودر","تانکر آب","دیزل ژنراتور"]},
+  other:{name:"سایر",c:"#64748b",types:["سایر"]}};
+const SEC_K=Object.keys(SECS);
+const secByType=t=>SEC_K.find(k=>SECS[k].types.includes(t))||"other";
+const secOf=mid=>{ const m=S.machines.find(x=>x.id===mid); return m?secByType(m.type):"other"; };
+const secC=k=>(SECS[k]||SECS.other).c, secN=k=>(SECS[k]||SECS.other).name;
+const secTag=k=>k?`<span class="tag" style="border-color:${secC(k)};color:${secC(k)}">${secN(k)}</span>`:"";
+const secBar=k=>k?`border-inline-start:3px solid ${secC(k)};padding-inline-start:8px`:"";
+/* رنگ هر تب */
+const TAB_C={today:"#1f6feb",dash:"#0f766e",fleet:"#d97706",sms:"#be185d",perf:"#7c3aed",check:"#0891b2",mach:"#b45309",pm:"#9d174d",wash:"#0284c7",
+  batch:"#0e9f6e",mat:"#a16207",plan:"#4338ca",dir:"#c2410c",safety:"#b91c1c",notes:"#525252",rep:"#1d4ed8",ai:"#6d28d9",set:"#475569"};
+const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۳۰ آبان — ۱۰";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const APP_BUILD="۳۰ آبان — ۱۱";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -363,7 +380,8 @@ function chart(type,labels,values,color){
 function render(){
   document.getElementById("todayLbl").textContent = jal(todayISO())+" • نسخه "+APP_BUILD;
   document.getElementById("nav").innerHTML = TABS.map(([k,n])=>
-    `<button data-tab="${k}" class="${k===tab?"active":""}">${n}</button>`).join("");
+    `<button data-tab="${k}" class="${k===tab?"active":""}" style="${k===tab?`background:${tabC(k)};border-color:${tabC(k)};color:#fff`:`border-bottom:2px solid ${tabC(k)}`}">${n}</button>`).join("");
+  document.documentElement.style.setProperty("--tabc",tabC(tab));
   document.getElementById("main").innerHTML = ({today:vToday,dash:vDash,pm:()=>vTasks("pm"),wash:()=>vTasks("wash"),
     batch:vBatch,plan:vPlan,rep:vRep,ai:vAI,check:vCheck,set:vSet,mach:vMach,dir:vDir,fleet:vFleet,mat:vMat,safety:vSafety,notes:vNotes,sms:vSms,perf:vPerf})[tab]();
   if(tab==="ai") restoreChat();
@@ -534,6 +552,29 @@ function faultItem(f){const open=f.status!=="fixed";
    ${f.notes?`<div class="m">${esc(f.notes)}</div>`:""}
    ${(f.photos||[]).length?`<div class="thumbs">${f.photos.map(p=>`<button class="thumb" data-viewp="${p}"><img data-photo="${p}" alt=""></button>`).join("")}</div>`:""}
    <div class="row" style="margin-top:7px">${open?`<button class="ghost" data-fixf="${f.id}">رفع شد</button>`:""}<button class="danger" data-delf="${f.id}">حذف</button></div></div>`;}
+/* آمار کمپرسی و تریلی، جدا از بچینگ و با رنگ خودش */
+function vDumpStats(){ const t=todayISO(), d=+LS.get("dumpWin",7), from=addDays(t,-(d-1));
+  const M=S.machines.filter(m=>DUMP.includes(m.type)&&m.status!=="غیرفعال");
+  if(!M.length) return "";
+  const col=secC("dump"), norm=m=>+((S.norms.find(q=>q.type===m.type)||{}).n)||NORM_DEF[m.type]||4;
+  const R=M.map(m=>{ const inW=x=>inR(x.date,from,t)&&x.machineId===m.id;
+    const tr=S.trips.filter(inW), fu=S.fuel.filter(inW), st=S.stops.filter(inW), ft=S.faults.filter(inW);
+    const days=[...new Set(tr.map(x=>x.date))].length||1;
+    return {m,n:tr.length,days,lit:fu.reduce((a,b)=>a+(+b.liters||0),0),
+      cost:fu.reduce((a,b)=>a+(+b.cost||0),0)+st.reduce((a,b)=>a+(+b.cost||0),0),
+      min:st.reduce((a,b)=>a+(+b.min||0),0),bad:st.filter(x=>x.cat==="خرابی ناوگان").reduce((a,b)=>a+(+b.min||0),0),
+      open:ft.filter(x=>x.status!=="fixed").length,km:mUsage(m)}; }).sort((a,b)=>b.min-a.min);
+  const cz={}; for(const x of S.stops) if(inR(x.date,from,t)&&isDump(x.machineId)) cz[x.cat||"سایر"]=(cz[x.cat||"سایر"]||0)+(+x.min||0);
+  const CZ=Object.entries(cz).sort((a,b)=>b[1]-a[1]);
+  const tot=R.reduce((a,b)=>({n:a.n+b.n,lit:a.lit+b.lit,cost:a.cost+b.cost,min:a.min+b.min,open:a.open+b.open}),{n:0,lit:0,cost:0,min:0,open:0});
+  return `<div class="card" style="border-inline-start:4px solid ${col}"><h3 style="border-color:${col}">آمار کمپرسی و تریلی${secTag("dump")}</h3>
+   <div class="chips">${[[7,"۷ روز"],[30,"۳۰ روز"],[1,"امروز"]].map(q=>`<button class="chip ${d===q[0]?"on":""}" data-dumpw="${q[0]}">${q[1]}</button>`).join("")}</div>
+   <div class="note">این آمار فقط کمپرسی و کمپرسی تریلی است و با آمار بچینگ قاطی نمی‌شود. نُرم هر دستگاه ${fa(norm(M[0]))} سرویس در روز کاری است (جمعه معاف).</div>
+   ${tbl(["دستگاه","سرویس","روز کاری","سوخت (لیتر)","هزینه (تومان)","توقف (ساعت)","توقف خرابی","خرابی باز"],
+     R.map(o=>[`<span style="color:${col}">${esc(o.m.name)}</span>`,fa(o.n),fa(o.days),o.lit?fa(o.lit):"—",o.cost?fa(o.cost):"—",o.min?f1(o.min/60):"—",o.bad?f1(o.bad/60):"—",o.open?bad(fa(o.open),true):"۰"]))}
+   <div class="m">جمع: ${fa(tot.n)} سرویس • ${fa(tot.lit)} لیتر • ${fa(tot.cost)} تومان • ${f1(tot.min/60)} ساعت توقف • ${fa(tot.open)} خرابی باز</div>
+   ${CZ.length?`<div class="note" style="margin-top:8px">علت توقف‌ها:</div>${tbl(["علت","ساعت","سهم"],CZ.map(q=>[esc(q[0]),f1(q[1]/60),fa(Math.round(q[1]*100/(CZ.reduce((a,b)=>a+b[1],0)||1)))+"٪"]))}`:""}
+   <div class="note">ساعت توقف از پیامک رانندگان و سرشوفر می‌آید؛ موردی که تأیید نشده در این جدول نیست.</div></div>`; }
 function vMach(){
   if(selM){const m=S.machines.find(x=>x.id===selM); if(m) return vMachDetail(m); selM=null;}
   const al=docAlerts(), openF=S.faults.filter(f=>f.status!=="fixed").sort((a,b)=>b.date.localeCompare(a.date));
@@ -541,12 +582,13 @@ function vMach(){
   ${al.length?`<div class="card"><h3>سررسید مدارک (۳۰ روز آینده)</h3>${al.map(a=>{const[s,c]=dueTag(a.d);return `<div class="item"><div class="t">${esc(a.m.name)} — ${a.l}<span class="tag ${c}">${s}</span></div><div class="m">${jal(a.iso)}</div></div>`}).join("")}</div>`:""}
   <div class="card"><h3>ناوگان (${fa(S.machines.length)})</h3>
    <div class="row" style="margin-bottom:8px"><button class="primary" id="scanQr">اسکن QR دستگاه</button><button class="ghost" id="qrSheet">PDF برچسب‌های QR</button></div>
-   ${S.machines.length?S.machines.map(m=>{const f=openF.filter(x=>x.machineId===m.id).length;const sc=m.status==="در تعمیر"?"due":m.status==="غیرفعال"?"":"ok";
-     return `<button class="mrow" data-openm="${m.id}"><div class="t">${esc(m.name)} <span class="tag ${sc}">${m.status||"فعال"}</span>${f?`<span class="tag due">${fa(f)} خرابی باز</span>`:""}</div>
-     <div class="m">${esc(m.type||"")} • ${esc(m.code||"بدون پلاک")} • ${fa(mUsage(m))} ${unitName(m)}${m.driver?` • ${esc(m.driver)}`:""}</div></button>`}).join("")
+   ${S.machines.length?[...S.machines].sort((a,b)=>SEC_K.indexOf(secByType(a.type))-SEC_K.indexOf(secByType(b.type))||String(a.name).localeCompare(String(b.name))).map(m=>{const f=openF.filter(x=>x.machineId===m.id).length;const sc=m.status==="در تعمیر"?"due":m.status==="غیرفعال"?"":"ok";const sk=secByType(m.type);
+     return `<button class="mrow" data-openm="${m.id}" style="${secBar(sk)}"><div class="t">${esc(m.name)} <span class="tag ${sc}">${m.status||"فعال"}</span>${f?`<span class="tag due">${fa(f)} خرابی باز</span>`:""}</div>
+     <div class="m">${secTag(sk)} ${esc(m.type||"")} • ${esc(m.code||"بدون پلاک")} • ${fa(mUsage(m))} ${unitName(m)}${m.driver?` • ${esc(m.driver)}`:""}</div></button>`}).join("")
      :'<div class="empty">هنوز دستگاهی ثبت نکرده‌اید.</div>'}
    <details><summary>افزودن دستگاه</summary>${machineForm()}<div class="row" style="margin-top:9px"><button class="primary" id="addM">ثبت دستگاه</button></div></details>
   </div>
+  ${vDumpStats()}
   <div class="card"><h3>خرابی‌های باز (${fa(openF.length)})</h3>
    ${openF.length?openF.map(faultItem).join(""):'<div class="empty">خرابی بازی ثبت نشده.</div>'}
    <details><summary>ثبت خرابی</summary>${faultForm("")}</details>
@@ -1110,7 +1152,7 @@ async function serverRestore(){ if(!confirm("همه داده‌های این گ�
 
 /* ---------- پیام رانندگان (SMS) ---------- */
 const FSTOP=["خرابی","ترافیک / مسیر","صف بارگیری / معدن","انتظار در پروژه","سوخت‌گیری","مدارک / پلیس راه","آب و هوا","استراحت / غذا","سایر"];
-const SMS_T={fault:"خرابی",stop:"توقف",incident:"حادثه / ایمنی",batch:"تولید بچینگ",ready:"آماده‌به‌کار",service:"سرویس دوره‌ای",svcdue:"موعد سرویس",need:"درخواست قطعه",att:"مرخصی / غیبت",wash:"کارواش",trip:"سرویس حمل",job:"کار محوطه",report:"گزارش عمومی"}, SMS_C={fault:"due",stop:"soon",incident:"due",report:"",batch:"ok",ready:"ok",service:"ok",svcdue:"soon",need:"soon",att:"soon",wash:"ok",trip:"ok",job:"ok"};
+const SMS_T={fault:"خرابی",stop:"توقف",incident:"حادثه / ایمنی",batch:"تولید بچینگ",ready:"آماده‌به‌کار",service:"سرویس دوره‌ای",svcdue:"موعد سرویس",km:"اعلام کیلومتر",need:"درخواست قطعه",att:"مرخصی / غیبت",wash:"کارواش",trip:"سرویس حمل",job:"کار محوطه",report:"گزارش عمومی"}, SMS_C={fault:"due",stop:"soon",incident:"due",report:"",batch:"ok",ready:"ok",service:"ok",svcdue:"soon",km:"ok",need:"soon",att:"soon",wash:"ok",trip:"ok",job:"ok"};
 let smsF="new", smsBusy=false;
 const SMSP=()=>window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.SmsReader;
 const isDump=mid=>{const m=S.machines.find(x=>x.id===mid); return !!m&&DUMP.includes(m.type);};
@@ -1142,14 +1184,19 @@ function smsRule(body){const t=toEn(body||"").replace(/(\d{1,2})\s*[:،,.٫]\s*(
     /سوخت|گازوئیل/.test(t)?"سوخت‌گیری":/پلیس|مدارک|جریمه|توقیف/.test(t)?"مدارک / پلیس راه":/برف|باران|طوفان/.test(t)?"آب و هوا":/نهار|ناهار|استراحت|نماز/.test(t)?"استراحت / غذا":"سایر";
   return {type,cause,minutes};}
 /* ---------- تحلیل پیامک: نوع گزارش، دستگاه، و ثبت خودکار ---------- */
-const SMS_BTN={batch:"ثبت در تولید بچینگ",fuel:"ثبت سوخت‌گیری",fault:"ثبت در خرابی‌ها",incident:"ثبت در ایمنی",ready:"ثبت آماده‌به‌کار",service:"ثبت سرویس دوره‌ای",svcdue:"ثبت در برنامه‌ی نگهداری",att:"ثبت در حضور و غیاب",need:"ثبت درخواست قطعه",wash:"ثبت کارواش",trip:"ثبت سرویس‌ها",job:"ثبت کار محوطه",stopnote:"تأیید توقف"};
+const SMS_BTN={batch:"ثبت در تولید بچینگ",fuel:"ثبت سوخت‌گیری",fault:"ثبت در خرابی‌ها",incident:"ثبت در ایمنی",ready:"ثبت آماده‌به‌کار",service:"ثبت سرویس دوره‌ای",svcdue:"ثبت در برنامه‌ی نگهداری",km:"ثبت کیلومتر",att:"ثبت در حضور و غیاب",need:"ثبت درخواست قطعه",wash:"ثبت کارواش",trip:"ثبت سرویس‌ها",job:"ثبت کار محوطه",stopnote:"تأیید توقف"};
 const FA_NUM={"یک":1,"یه":1,"دو":2,"سه":3,"چهار":4,"پنج":5,"شش":6,"شیش":6,"هفت":7,"هشت":8};
 const UNIT_AFTER="(?!\\s*(?:لیتر|ليتر|متر|تن|هزار|تومان|ریال|دقیقه|ساعت|کیلو|کلیو|سرویس|km|[:.،,\\/٫]\\s*\\d))";
 function smsMachine(body,c){ const t=toEn(body||"");
+  /* پلاک کامل مثل «۶۹ع۷۲۶ایران۵۵» یا «ش ۶۹۷۶۳» */
+  const pl=/(\d{2})\s*[ء-ی]\s*(\d{3})\s*(?:ایران)?\s*\d{0,2}/.exec(t);
+  if(pl){ const mc=S.machines.find(x=>String(x.code||"")===pl[1]+pl[2]); if(mc) return mc.id; }
   for(const k of t.match(/(?<!\d)\d{5}(?!\d)/g)||[]){ const mc=S.machines.find(x=>String(x.code||"")===k); if(mc) return mc.id; }
   /* کد کوتاه: سه یا چهار رقم آخر پلاک، مثل 763 برای 69763 */
   for(const m of t.matchAll(new RegExp("(?<![\\d:.،,\\/٫]|ساعت\\s{0,2})(\\d{3,4})(?!\\d)"+UNIT_AFTER,"g"))){ const hit=S.machines.filter(x=>String(x.code||"").length>m[1].length&&String(x.code).endsWith(m[1])); if(hit.length===1) return hit[0].id; }
   const mc=plantByLetter(plantLetter(t)); if(mc) return mc.id;
+  /* سرشوفر از ماشین دیگران گزارش می‌دهد؛ اگر پلاک را نشناسیم نباید ماشین خودش ثبت شود */
+  if(c&&(c.chief||roleOf(c)==="سرشوفر")) return "";
   return c?(c.machineId||""):""; }
 const ORD_HI={"یازدهم":11,"دوازدهم":12,"سیزدهم":13,"چهاردهم":14,"پانزدهم":15,"شانزدهم":16,"هفدهم":17,"هیفدهم":17,"هجدهم":18,"هیجدهم":18,"هژدهم":18,"نوزدهم":19,"بیستم":20,"سی ام":30,"سی‌ام":30};
 const ORD_LO={"اول":1,"یکم":1,"دوم":2,"سوم":3,"چهارم":4,"پنجم":5,"ششم":6,"هفتم":7,"هشتم":8,"نهم":9,"دهم":10};
@@ -1168,7 +1215,7 @@ function fuelParse(t){ const o={}; let m;
   if((m=/(\d+(?:[.,٫]\d+)?)\s*(?:لیتر|ليتر|lit)/.exec(t))) o.liters=numFa(m[1]);
   if((m=/(\d+(?:[.,٫]\d+)?)\s*هزار\s*تومان/.exec(t))) o.cost=Math.round(numFa(m[1])*1000);
   else if((m=/مبلغ\s*[:：]?\s*(\d[\d,٬]*)\s*(تومان|ریال)?/.exec(t))){ const v=+m[1].replace(/[,٬]/g,""); o.cost=m[2]==="ریال"?Math.round(v/10):v; }
-  if((m=/(?:جایگاه|پمپ)\s+(?!گازوئیل|گازوییل|بنزین|سوخت)([ء-ی‌]+(?:\s+(?!ساعت|مبلغ|مورخ|تاریخ|لیتر|زدم)[ء-ی‌]+)?)/.exec(t))) o.station=m[1].trim();
+  if((m=/(?:جایگاه|جایگه|پمپ)\s+(?!گازوئیل|گازوییل|بنزین|سوخت)([ء-ی‌]+(?:\s+(?!ساعت|مبلغ|مورخ|تاریخ|لیتر|زدم|از|کارت|سهمیه|مبلغ|تومان|هزار|و)[ء-ی‌]+)?)/.exec(t))) o.station=m[1].trim();
   const T=[]; for(const k of t.matchAll(/ساعت[^\d\n]{0,28}?[:：]?\s*(\d{1,2})(?:\s*[:.،,٫]\s*(\d{2})(?!\d))?(?:\s*دقیقه)?\s*(صبح|ظهر|عصر|شب|بعد\s*از\s*ظهر)?/g)){
     let h=+k[1]; const mi=+k[2]||0; if(h>23||mi>59) continue; if(k[3]&&/عصر|شب|بعد/.test(k[3])&&h>=1&&h<12&&!(k[3]==="شب"&&h<5)) h+=12; T.push(h*60+mi); }
   if(T.length) o.fromT=hm2(T[0]);
@@ -1176,6 +1223,61 @@ function fuelParse(t){ const o={}; let m;
   return o; }
 function spanMin(t){ const a=/از\s*(?:ساعت\s*)?(\d{1,2})(?:\s*[:.،,٫]\s*(\d{2}))?/.exec(t), E=[...t.matchAll(/(?:تا|الی|لغایت)\s*(?:ساعت\s*)?(\d{1,2})(?:\s*[:.،,٫]\s*(\d{2}))?/g)];
   if(!a||!E.length) return null; const e=E[E.length-1]; let d=(+e[1]*60+(+e[2]||0))-(+a[1]*60+(+a[2]||0)); if(d<0) d+=1440; return d>0&&d<=960?d:null; }
+/* ===================== پیامک رانندگان کمپرسی و کمپرسی تریلی =====================
+   مدل این پیامک‌ها با بچینگ فرق دارد: ساعت و جایگاه و لیتر و کارت سوخت، یا شرح خرابی و
+   مدت توقف. توقفِ خرابی از توقفِ برنامه‌دار (روغن، معاینه، کارواش، صف سوخت) جدا می‌شود. */
+const W_NUM={"صفر":0,"یک":1,"یه":1,"دو":2,"سه":3,"چهار":4,"پنج":5,"شش":6,"شیش":6,"هفت":7,"هشت":8,"نه":9,"ده":10,"یازده":11,"دوازده":12,"سیزده":13,"چهارده":14,"پانزده":15,"پونزده":15,"شانزده":16,"هفده":17,"هیفده":17,"هجده":18,"هیجده":18,"نوزده":19,"بیست":20,"سی":30,"چهل":40,"پنجاه":50,"شصت":60,"هفتاد":70,"هشتاد":80,"نود":90,"صد":100,"دویست":200,"سیصد":300,"چهارصد":400,"پانصد":500,"ششصد":600,"شیشصد":600,"هفتصد":700,"هشتصد":800,"نهصد":900};
+const W_SC={"هزار":1000,"میلیون":1e6,"ملیون":1e6,"میلیارد":1e9};
+/* «یک میلیون و سیصد هزار تومان» و «نود هزار تومان» و «۱۲۰۰۰۰ هزار تومان» (که منظورش ۱۲۰٬۰۰۰ است) */
+function faAmount(t){ const s=String(t||""), m=/(تومان|ریال)/.exec(s); if(!m) return 0;
+  const toks=s.slice(Math.max(0,m.index-48),m.index).split(/[\s‌]+/).filter(Boolean), run=[];
+  for(let i=toks.length-1;i>=0;i--){ const w=toks[i];           // از انتها، تا اولین واژه‌ی نامربوط
+    if(/^\d+$/.test(w)||W_NUM[w]!=null||W_SC[w]||w==="و") run.unshift(w); else break; }
+  if(!run.length) return 0; let tot=0, cur=0;
+  for(const w of run){ if(w==="و") continue;
+    if(/^\d+$/.test(w)) cur+=+w;
+    else if(W_NUM[w]!=null) cur+=W_NUM[w];
+    else if(W_SC[w]){ if(W_SC[w]===1000&&cur>=10000){ tot+=cur; cur=0; }   // «۱۲۰۰۰۰ هزار تومان» یعنی همان ۱۲۰٬۰۰۰
+      else { cur=(cur||1)*W_SC[w]; tot+=cur; cur=0; } } }
+  const v=tot+cur; return Math.round(/ریال/.test(m[1])?v/10:v); }
+const dNorm=t=>toEn(String(t||"")).replace(/ي/g,"ی").replace(/ك/g,"ک")
+  .replace(/تعمیر\s*کاه|تعمیرکاه/g,"تعمیرگاه").replace(/نقض/g,"نقص").replace(/جایگه/g,"جایگاه")
+  .replace(/کلیومتر|کیلو\s*متر/g,"کیلومتر").replace(/گازوييل|گازوییل|گازويیل/g,"گازوئیل")
+  .replace(/⏰️?/g," ساعت ").replace(/هزار\s*تومان/g," هزار تومان")
+  .replace(/ساعت\s*(15|30|45)\s+(\d{1,2})(?!\d)/g,"ساعت $2:$1")              // «ساعت ۳۰ ۲» یعنی ۲:۳۰
+  .replace(/(^|[^\d:])(\d{2})\s*[،,]\s*(\d{1,2})(?!\d)/g,(w,p,a,b)=>+a>23&&+b<24?p+b+":"+a:w)  // «۳۰، ۳» یعنی ۳:۳۰ ولی «۱۵،۳۰» همان ۱۵:۳۰
+  .replace(/(\d{1,2})\s*[،,]\s*(\d{2})(?!\d)/g,"$1:$2")                       // «۱۵،۳۰» یعنی ۱۵:۳۰
+  .replace(/\s+/g," ");
+const DSTOP=[
+ [/صف\s*(?:گازوئیل|سوخت|پمپ)|در\s*صف|نوبت\s*گازوئیل|موفق\s*به\s*(?:گازوئیل|سوخت)[^\n]{0,14}نشد|گازوئیل\s*(?:نداشت|نیومد|نبود|نمی\s*خورد)|بابت\s*کارت\s*سوخت/,"صف سوخت"],
+ [/تعمیرگاه|مکانیک/,"تعمیرگاه"],
+ [/معاینه\s*فنی/,"معاینه فنی"],
+ [/دیاگ/,"دیاگ"],
+ [/با[طت]ری\s*سازی/,"باطری‌سازی"],
+ [/آهنگری|اهنگری|جوشکاری/,"آهنگری و جوشکاری"],
+ [/کارواش|ضد\s*یخ/,"کارواش"],
+ [/پنچر|آپارات|اپارات|لاستیک/,"پنچری و لاستیک"],
+ [/تعویض\s*روغن|روغنی|سرویس\s*(?:دوره|کامل)|گریس/,"تعویض روغن و سرویس"],
+ [/ساعتی\s*باد|باد\s*(?:چرخ|لاستیک)/,"باد و تنظیم"],
+ [/جهت\s*(?:تعویض|نصب|تعمیر|بازدید)|بابت\s*(?:تعویض|نصب|بازدید)|برای\s*تعویض/,"تعمیر برنامه‌دار"],
+ [/انتظار\s*بار|نبود\s*بار|بی\s*کار|بدون\s*م[اأ]موریت/,"انتظار بار"]];
+const dCause=t=>{ for(const q of DSTOP) if(q[0].test(t)) return q[1]; return ""; };
+const BREAK_RE=/خراب|شکست|نشت|ترکید|از\s*خط\s*خارج|خارج\s*از\s*خط|روشن\s*نمی|خاموش\s*کرد|نقص\s*فنی|قطعی\s*برق|زمین\s*گیر|در\s*?گیر\s*است|آب\s*کم|جوش\s*آورد|باز\s*شده\s*افتاده|لرزش|شل\s*شده/;
+const dKm=t=>{ const m=/کیلومتر(?:\s*تعویض)?\s*[:：]?\s*(\d{4,7})|(\d{4,7})\s*کیلومتر/.exec(t); return m?+(m[1]||m[2]):0; };
+const dCard=t=>{ const m=/کارت\s*(?:را\s*)?((?:\d+[\sو،,]*){1,3})/.exec(t);
+  if(m) return m[1].trim().replace(/[\sو،,]+/g," "); const s=/سهمیه\s*(اول|دوم|سوم)/.exec(t); return s?"سهمیه "+s[1]:""; };
+/* بازه‌ی زمانی، حتی وقتی از دیشب تا امروز طول کشیده */
+function dSpan(t){ const cross=/دیشب|دیروز|شب\s*گذشته/.test(t)&&/تا\s*(?:امروز|صبح|ظهر|فردا)/.test(t);
+  const a=/(?:از\s*ساعت|ساعت|از)\s*(\d{1,2})(?::(\d{2}))?/.exec(t);
+  const E=[...t.matchAll(/(?:تا|الی|لغایت)\s*(?:امروز\s*)?(?:ساعت\s*)?(\d{1,2})(?::(\d{2}))?\s*(صبح|ظهر|عصر|شب)?/g)];
+  if(!a||!E.length) return null; const e=E[E.length-1];
+  if(e.index<=a.index) return null;                 // بدون زمان شروعِ واقعی، مدت حساب نمی‌شود
+  const s=+a[1]*60+(+a[2]||0); let f=+e[1]*60+(+e[2]||0);
+  let st=s, pm=false;
+  if(e[3]&&/ظهر|عصر|شب/.test(e[3])&&+e[1]<12){ f+=720; pm=true; }
+  if(pm&&+a[1]<12&&f-st>420) st+=720;            // «از ۲:۴۶ الی ۵ عصر» یعنی هر دو بعدازظهر
+  let d=f-st; if(d<=0||cross) d+=1440;
+  return d>0&&d<=2880?d:null; }
 const smsTitle=b=>(String(b||"").replace(/^\s*(?:با\s*)?سلام(?:\s*(?:علیکم|و\s*عرض\s*ادب|و\s*احترام))?[\s،,.]*(?:(?:صبح|ظهر|عصر|شب|وقت|روز)[^\n،,.]{0,22}?بخیر|خسته\s*نباشید)?[\s،,.\n]*/,"").split("\n").map(x=>x.trim()).filter(Boolean)[0]||String(b||"").trim()).slice(0,70);
 function smsAnalyze(body,c){ const t=toEn(body||"").replace(/ي/g,"ی").replace(/ك/g,"ک"), r=smsRule(body), role=c?roleOf(c):"", out=Object.assign({},r);
   const set=(type,extra)=>Object.assign(out,{type,cause:null},extra||{});
@@ -1183,8 +1285,28 @@ function smsAnalyze(body,c){ const t=toEn(body||"").replace(/ي/g,"ی").replace(
   const segs=batchSmsParse(body,todayISO());
   if((segs.some(g=>g.volume>0)||(segs.some(g=>g.letter||g.reps.length)&&r.type!=="fault"))&&(role==="اپراتور بچینگ"||BATCH_KW.test(t))) return set("batch",{fuel:false,minutes:null});
   out.rdate=smsDay(t,todayISO());
-  if(r.fuel){ const f=fuelParse(t); return Object.assign(out,{liters:f.liters||r.liters||null,cost:f.cost||0,station:f.station||"",fromT:f.toT?f.fromT:(r.toT?r.fromT:(f.fromT||"")),toT:f.toT||r.toT||"",minutes:f.minutes||((r.toT||/معطل|صف|طول کشید|توقف|منتظر/.test(t))?r.minutes:null)}); }
-  if(/آماده\s*(?:به|ب)?\s*کار|تعمیر\S*\s*(?:شد|تمام)|درست شد|رفع شد|راه افتاد|از تعمیرگاه\s*(?:خارج|بیرون|تحویل)|(?:اومد|آمد|امد|برگشت|وارد شد)\s*(?:به\s*|تو\s*|توی\s*|داخل\s*)?خط|تو\s*خط|توخط/.test(t)) return set("ready",{minutes:null});
+  const dt=dNorm(body), money=faAmount(dt), span=dSpan(dt), dkm=dKm(dt), drv=role==="راننده"||role==="سرشوفر";
+  if(r.fuel){ const f=fuelParse(dt);
+    /* صف سوخت یا کارت سوخت بدون زدن گازوئیل، توقف است نه سوخت‌گیری */
+    if(!f.liters&&!r.liters&&/صف|نوبت|نشد|نداشت|نیومد|نبود|نمی\s*خورد|بابت\s*کارت/.test(dt))
+      return set("stop",{cause:"صف سوخت",fuel:false,liters:null,minutes:span||f.minutes||r.minutes,cost:money||0,
+        fromT:f.fromT||r.fromT||"",toT:f.toT||r.toT||""});
+    return Object.assign(out,{liters:f.liters||r.liters||null,cost:money||f.cost||0,station:f.station||"",card:dCard(dt),
+      fromT:f.fromT||r.fromT||"",toT:f.toT||r.toT||"",
+      minutes:f.minutes||span||((r.toT||/معطل|صف|طول کشید|توقف|منتظر/.test(t))?r.minutes:null)}); }
+  if(drv||isDump(smsMachine(body,c))){
+    /* خرابی واقعی از توقف برنامه‌دار جدا می‌شود: روغن و معاینه و کارواش و دیاگ خرابی نیستند */
+    if(BREAK_RE.test(dt)&&!/آماده\s*(?:سرویس|به\s*کار|کار)|اومد\s*تو\s*خط|توخط/.test(dt)){
+      const cz=dCause(dt);
+      return set("fault",{cause:"خرابی",minutes:span||r.minutes,cost:money||0,km:dkm||0,
+        sleep:/از\s*خط\s*خارج|خارج\s*از\s*خط|خوابید|پارک|زمین\s*گیر|روشن\s*نمی|خاموش\s*کرد|قطعی\s*برق|تعمیرگاه/.test(dt),
+        where:cz==="تعمیرگاه"?"تعمیرگاه":""}); }
+    if(!/آماده\s*(?:سرویس|به\s*کار|کار)|اومد\s*تو\s*خط|توخط/.test(dt)){
+      const cz=dCause(dt);
+      if(cz&&cz!=="تعویض روغن و سرویس") return set("stop",{cause:cz,minutes:span||r.minutes,cost:money||0,km:dkm||0});
+      if(cz==="تعویض روغن و سرویس") return set("service",{minutes:span||r.minutes,cost:money||0,km:dkm||0}); }
+    if(dkm&&!/کارکرد|کار کرد/.test(dt)) return set("km",{km:dkm,minutes:null}); }
+  if(/آماده\s*(?:سرویس|خدمت)|آماده\s*(?:به|ب)?\s*کار|تعمیر\S*\s*(?:شد|تمام)|درست شد|رفع شد|راه افتاد|از تعمیرگاه\s*(?:خارج|بیرون|تحویل)|(?:اومد|آمد|امد|برگشت|وارد شد)\s*(?:به\s*|تو\s*|توی\s*|داخل\s*)?خط|تو\s*خط|توخط/.test(t)) return set("ready",{minutes:null});
   let m=/روغن[^\n]{0,40}?(\d{3,6})\s*(?:کیلومتر|کلیومتر|کیلو\s*متر|km)/.exec(t);
   if(m&&/کارکرد|کار کرد/.test(t)) return set("svcdue",{km:+m[1],minutes:null});
   if(/تعویض روغن|روغن\S*\s*(?:عوض|تعویض)\s*شد|سرویس دوره|سرویس کامل|فیلتر\S*\s*(?:عوض|تعویض)|گریس\s*کاری|گریسکاری/.test(t)) return set("service");
@@ -1203,9 +1325,10 @@ function smsAnalyze(body,c){ const t=toEn(body||"").replace(/ي/g,"ی").replace(
 function smsRecord(id,ts,phone,body,cGiven){const c=cGiven||contactOf(phone), d=new Date(+ts), r=smsAnalyze(body,c), day=localISO(d);
   return {id,ts:+ts,date:day,time:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"),phone:normPhone(phone||(c&&c.phone)||""),
     contactId:c?c.id:"",driver:c?c.name:"",machineId:r.type==="batch"?((c&&(S.machines.find(q=>q.id===c.machineId)||{}).type==="بچینگ")?c.machineId:""):smsMachine(body,c),body,type:r.type,cause:r.cause,minutes:r.minutes,
-    fuel:!!r.fuel,liters:r.liters||null,fromT:r.fromT||"",toT:r.toT||"",cost:r.cost||0,station:r.station||"",n:r.n||0,tons:r.tons||0,att:r.att||"",km:r.km||0,sleep:!!r.sleep,
+    fuel:!!r.fuel,liters:r.liters||null,fromT:r.fromT||"",toT:r.toT||"",cost:r.cost||0,station:r.station||"",card:r.card||"",n:r.n||0,tons:r.tons||0,att:r.att||"",km:r.km||0,sleep:!!r.sleep,
     rdate:r.rdate&&r.rdate!==day?r.rdate:"",status:"new",ai:false};}
-const smsKind=x=>x.type==="batch"?"batch":x.cause==="سوخت‌گیری"?"fuel":["fault","incident","ready","service","svcdue","att","need","wash","trip","job"].includes(x.type)?x.type:x.type==="stop"?"stopnote":(x.type==="report"&&isBatchSms(x))?"batch":"";
+const smsSec=x=>x&&x.machineId?secOf(x.machineId):(x&&x.type==="batch"?"batch":"other");
+const smsKind=x=>x.type==="batch"?"batch":x.cause==="سوخت‌گیری"?"fuel":["fault","incident","ready","service","svcdue","km","att","need","wash","trip","job"].includes(x.type)?x.type:x.type==="stop"?"stopnote":(x.type==="report"&&isBatchSms(x))?"batch":"";
 /* پیام‌های جدید را خودکار به گزارش تبدیل می‌کند؛ هر کدام با «لغو ثبت» برمی‌گردد */
 async function smsAutoRun(ids){ if(!LS.get("smsAuto",true)) return 0; let n=0;
   const L=S.sms.filter(x=>x.status==="new"&&!x.noAuto&&x.contactId&&(!ids||ids.includes(x.id))).sort((a,b)=>a.ts-b.ts);
@@ -1293,6 +1416,9 @@ function segRecord(x,g,i){ const c=S.contacts.find(k=>k.id===x.contactId)||conta
       kind="rep"; r.type=hit.type; if(hit.type!=="stop"){ r.cause=null; r.fuel=false; } }
     conf=Math.max(conf,Math.min(.95,.7+.05*Math.min(4,hit.n-hit.miss))); }
   if(kind==="rep"&&lexFit(x.contactId,r.type,x.time)) conf=Math.min(.95,conf+.05);
+  const dp=chiefDup(r);
+  if(dp){ conf=Math.min(conf,.4); r.dupOf=dp.id;
+    r.autoNote=`شاید تکراری باشد: همین مورد برای ${mName(r.machineId)} از ${dp.driver||"راننده"} ثبت شده است.`; }
   if(kind==="rep"&&r.type==="batch"){            // گزارش بچینگ: مغایرت واحد یا نبود دستگاه/شیفت باید تأیید بخورد
     const rows=batchSmsParse(g.text,x.rdate||x.date,{shift:(c||{}).shift||""});
     const ownM=!!(c&&(S.machines.find(q=>q.id===c.machineId)||{}).type==="بچینگ");
@@ -1315,6 +1441,13 @@ async function segRun(sg,quiet){
   try{ await caseTouch(cur); await verifRun(cur); }catch(e){}
   return true; }
 /* پردازش یک پیامک: تک‌موضوعی مثل قبل، چندموضوعی از راه قطعه‌ها */
+/* سرشوفر گزارش ماشین دیگران را هم می‌دهد؛ اگر خود راننده همان را داده باشد دوبار ثبت نمی‌شود */
+const isChief=c=>!!c&&(c.chief||roleOf(c)==="سرشوفر");
+function chiefDup(x){ const c=S.contacts.find(k=>k.id===x.contactId);
+  if(!isChief(c)||!x.machineId) return null; const day=x.rdate||x.date, k=smsKind(x); if(!k) return null;
+  const near=(a,b)=>{ if(!a||!b) return true; const h=v=>{const p=String(v).split(":");return (+p[0]||0)*60+(+p[1]||0);}; return Math.abs(h(a)-h(b))<=150; };
+  return [...S.sms,...S.smsSeg].find(y=>y.id!==x.id&&y.status==="done"&&y.machineId===x.machineId&&(y.rdate||y.date)===day
+    &&y.contactId&&y.contactId!==x.contactId&&smsKind(y)===k&&near(y.fromT,x.fromT))||null; }
 /* گزارش بچینگ چندخطی یک واحد است (تاریخ، تناژ و متراژ در خطوط جدا) و شکسته نمی‌شود */
 function bFlag(x){ const c=S.contacts.find(k=>k.id===x.contactId), rows=bParse(x);
   const ownM=!!(c&&(S.machines.find(q=>q.id===c.machineId)||{}).type==="بچینگ");
@@ -1322,7 +1455,7 @@ function bFlag(x){ const c=S.contacts.find(k=>k.id===x.contactId), rows=bParse(x
 async function smsProcess(x,quiet){
   const whole=smsKind(x)==="batch", body=String(x.body||"");
   const gs=(SEG_ON()&&!whole)?segSplit(body):[{span:[0,body.length],text:body}];
-  if(gs.length<2&&segClass(x.body)==="rep"&&!(whole&&bFlag(x))){ const k=smsKind(x);   // تک‌موضوعی: همان مسیر همیشگی
+  if(gs.length<2&&segClass(x.body)==="rep"&&!(whole&&bFlag(x))&&!chiefDup(x)){ const k=smsKind(x);   // تک‌موضوعی: همان مسیر همیشگی
     if(k){ let ok=false; try{ ok=await smsConvert(k,x,quiet); }catch(e){ ok=false; }
       if(ok){ try{ await caseTouch(x); await verifRun(x); }catch(e){} return true; } } }
   /* موضوع مشخص نشد یا ثبت ناقص ماند: به‌جای افتادن در «عمومی»، به صف تأیید می‌رود */
@@ -1500,12 +1633,45 @@ const BSEED=[
  {key:"یاراحمدی",role:"اپراتور بچینگ",shift:"",expect:"daily",
   note:"با «سلام عزیزم گزارش امروز» شروع می‌کند و معمولاً تاریخ نمی‌نویسد، پس تاریخ ارسال حساب می‌شود. عدد را قبل از برچسب می‌نویسد («۲۲۰-۹متراژ») و «-» ممیز است. «وزن کل» یعنی تناژ به تن. گاهی ممیز متراژ را جا می‌اندازد («۱۷۳۰۵» یعنی ۱۷۳٫۰۵) — عدد را خودت تأیید کن. تعمیرهایش را در خط آخر می‌نویسد. معمولاً فرستادن گزارش را فراموش می‌کند.",
   pats:["سلام عزیزم گزارش امروز\n220-9متراژ\n497/400وزن کل\nتعویض یاتاقان نوار شیبدار بچینگ B","سلام عزیزم گزارش امروز\n17305متراژ\n453-800 وزن کل","تاریخ 8/20\n13متر بتن زدم"]}];
+const DSEED=[
+ {key:"ایلخانی",role:"راننده",plate:"596",expect:"",
+  note:"گزارش را با «باسلام جهت اطلاع» می‌نویسد. سوخت را به شکل «زدن گازوئیل ساعت ... جایگاه ... لیتر ... مبلغ ... هزارتومان» می‌فرستد و «۱۵،۳۰» یعنی ۱۵:۳۰. وقتی می‌گوید «در صف گازوئیل بودم» یا «گازوئیل نمی‌خورد» سوخت نزده، پس توقف است نه سوخت‌گیری.",
+  pats:["سلام زدن گازوئیل ساعت 15:30 جایگاه دوران 150 لیتر مبلغ 60 هزار تومان"]},
+ {key:"غلامی",role:"راننده",plate:"476",
+  note:"سوخت را با جایگاه و لیتر و مبلغ می‌دهد و شماره‌ی کارت سوخت را هم می‌نویسد («از کارت ۸ ۱۴»، «سهمیه دوم کارت»). مبلغ را گاهی با حرف («نود هزارتومان») و گاهی اشتباه («۱۲۰۰۰۰هزارتومان» یعنی ۱۲۰٬۰۰۰ تومان) می‌نویسد. روز را هم با کلمه می‌گوید («نوزدهم»، «مورخه هیجدهم»).",
+  pats:["سلام زدن گازوئیل ساعت 7 صبح جایگاه امام رضا 300 لیتر مبلغ 110 هزار تومان"]},
+ {key:"آقامیری",role:"راننده",plate:"733",
+  note:"فقط ساعت ورود و خروج پمپ گازوئیل را می‌دهد، در یک خط («۱۵ تا ۱۵:۴۵») یا دو خط جدا. لیتر و مبلغ نمی‌نویسد، پس فقط مدت توقف سوخت‌گیری از او ثبت می‌شود. همین قالب را برای تعویض روغنی هم می‌فرستد.",
+  pats:["سلام ساعت ورود به پمپ گازوئیل 6:30 ساعت خروج 7:15"]},
+ {key:"مولای",role:"راننده",plate:"726",
+  note:"کیلومتر و پلاک کامل («۶۹ع۷۲۶ایران۵۵») را می‌فرستد. مدت خرابی را با بازه‌ی دو روزه می‌گوید («دیروز ساعت ۲۰ ... تا امروز ساعت ۱۲ ظهر») که باید کامل حساب شود.",
+  pats:["سلام کیلومتر 253900 69ع726ایران55"]},
+ {key:"کریمی",role:"راننده",plate:"246",
+  note:"ساعت را برعکس می‌نویسد: «ساعت ۳۰ ۲» یعنی ۲:۳۰ و «۱ تا ۳۰، ۳» یعنی ۱ تا ۳:۳۰. گزارش‌هایش کوتاه و محاوره‌ای است و بیشتر در جواب سؤال می‌آید، پس تکه‌های بی‌موضوع باید به صف تأیید بروند نه ثبت خودکار.",
+  pats:["سلام ساعت 2:30 تو جاده معدن کیمیا"]},
+ {key:"حیدری",role:"راننده",plate:"763",
+  note:"با شناسه‌ی ماشین شروع می‌کند («ش ۶۹۷۶۳») و ساعت را برعکس می‌نویسد («ساعت ۳۰ ۸» یعنی ۸:۳۰).",
+  pats:["ش 69763 ساعت 8:30 بابت تعویض روغن راننده حیدری"]},
+ {key:"انصاری",role:"سرشوفر",plate:"",chief:true,
+  note:"سرشوفر کمپرسی‌ها و تریلی‌هاست و گزارش ماشین دیگران را هم می‌دهد؛ پلاک سه‌رقمی را اول پیام می‌نویسد («۷۴۴ از ساعت ۹,۳۰ الی ۱۲,۱۵ تعمیرگاه»). «تعمیرکاه» یعنی تعمیرگاه و «۹,۳۰» یعنی ۹:۳۰. اگر پلاک را ننوشت، دستگاه را حدس نزن. گزارشش باید با گزارش خود راننده مقایسه شود تا دوبار ثبت نشود.",
+  pats:["سلام 744 از ساعت 9:30 الی 12:15 تعمیرگاه تعویض لاستیک"]}];
 function seedPats(texts){ const c={}, out=[];
   texts.forEach(t=>new Set(lexWords(t)).forEach(w=>c[w]=(c[w]||0)+1));
   const com=Object.keys(c).filter(w=>c[w]>=2).sort((a,b)=>b.length-a.length);
   if(com.length>=3) out.push(com.slice(0,3).sort().join(" "));
   if(com.length>=2) out.push(com.slice(0,2).sort().join(" "));
   return out; }
+async function seedDump(manual){ let nc=0, np=0, miss=[];
+  for(const d of DSEED){ const c=S.contacts.find(k=>new RegExp(d.key).test(k.name||""));
+    if(!c){ miss.push(d.key); continue; }
+    const mc=d.plate?S.machines.find(m=>DUMP.includes(m.type)&&String(m.code||"").endsWith(d.plate)):null;
+    await save("contacts",Object.assign({},c,{role:c.role||d.role,chief:d.chief||c.chief||false,
+      machineId:c.machineId||(mc?mc.id:""),aiNote:c.aiNote||d.note})); nc++;
+    for(const pt of seedPats(d.pats.concat(d.pats))){ if(S.lex.some(r=>r.scope==="sms"&&r.who===c.id&&r.pat===pt)) continue;
+      await save("lex",{id:uid(),scope:"sms",who:c.id,pat:pt,type:d.chief?"fault":"stop",n:2,miss:0,at:Date.now(),by:"user"}); np++; } }
+  LS.set("seedD",true); render();
+  if(manual) alert(`${fa(nc)} راننده/سرشوفر آموزش داده شد.`+(miss.length?`\nدر فهرست پرسنل پیدا نشد: ${miss.join("، ")} — اول اضافه‌شان کن و دوباره بزن.`:""));
+  return {nc,np,miss}; }
 async function seedBatch(manual){ let nc=0, np=0, miss=[];
   for(const s of BSEED){ const c=S.contacts.find(k=>new RegExp(s.key).test(k.name||""));
     if(!c){ miss.push(s.key); continue; }
@@ -1533,7 +1699,7 @@ function vLex(){ const L=S.lex.filter(r=>r.scope==="sms"), on=L.filter(r=>!r.off
   return `<div class="card"><h3>حافظه‌ی آموخته‌ی اپ${L.length?`<span class="tag ok">${fa(on.length)} الگو</span>`:""}</h3>
    <label style="display:flex;gap:8px;align-items:center"><input id="lexOn" type="checkbox" style="width:auto" ${LS.get("lexOn",true)?"checked":""}> یاد گرفتن از تأییدها و اصلاح‌های من</label>
    <div class="note" style="margin-top:6px">هر بار یک قطعه را خودت ثبت یا اصلاح کنی، اپ واژه‌های متمایز آن را به نام همان فرستنده نگه می‌دارد و دفعه‌ی بعد بدون اینترنت هم همان را تشخیص می‌دهد. الگویی که بیشتر از تعداد تأییدش «لغو ثبت» بخورد خودکار خاموش می‌شود.</div>
-   <div class="row" style="margin-top:8px"><button class="ghost" id="seedB">آموزش الگوی اوپراتورهای بچینگ</button></div>
+   <div class="row" style="margin-top:8px"><button class="ghost" id="seedB">آموزش الگوی اوپراتورهای بچینگ</button><button class="ghost" id="seedD">آموزش الگوی رانندگان کمپرسی</button></div>
    <div class="note">الگوی نوشتن علیخانی، طاهری و یاراحمدی (واحد تناژ، شکل تاریخ، جای دستگاه و شیفت) را یک‌بار در حافظه می‌نویسد. اگر نام‌شان در فهرست پرسنل نباشد، اول اضافه‌شان کن.</div>
    ${L.length?who.map(w=>{const c=S.contacts.find(k=>k.id===w), hrs=w==="*"?[]:lexHours(w);
      return `<details style="margin-top:8px"><summary><b>${esc(c?c.name:"عمومی")}</b> (${fa(grp[w].length)})</summary>
@@ -1549,7 +1715,7 @@ function vLex(){ const L=S.lex.filter(r=>r.scope==="sms"), on=L.filter(r=>!r.off
 /* ---------- نمایش قطعه‌ها، صف تأیید و پرونده‌ها ---------- */
 const VER_T={ok:'<span class="tag ok">تأیید GPS</span>',flag:'<span class="tag due">مغایرت GPS</span>',none:'<span class="tag">غیرقابل‌بررسی</span>'};
 function segLine(s){ const v=verOf(s.id);
-  return `<div class="item" style="margin-inline-start:10px">
+  return `<div class="item" style="margin-inline-start:10px;${secBar(smsSec(s))}">
    <div class="t">${SEG_L[s.kind]||s.kind}${s.kind==="rep"?` • ${SMS_T[s.type]||s.type}`:""}<span class="tag ${s.state==="done"?"ok":s.state==="queued"?"soon":""}">${SEG_ST[s.state]||s.state}</span>${s.by==="ai"?'<span class="tag">دستیار</span>':s.by==="learn"?'<span class="tag ok">از آموخته‌ها</span>':""}<span class="tag">اطمینان ${fa(Math.round(s.conf*100))}٪</span>${s.vState?VER_T[s.vState]:""}</div>
    <div style="white-space:pre-wrap;font-size:13px;margin:3px 0">${esc(s.body)}</div>
    ${s.machineId?`<div class="m">${esc(mName(s.machineId))}${s.minutes?` • ${fa(s.minutes)} دقیقه`:""}${s.liters?` • ${fa(s.liters)} لیتر`:""}${s.fromT?` • ${faNum(s.fromT)}`:""}</div>`:""}
@@ -1565,7 +1731,7 @@ function vQueue(){ const Q=S.smsSeg.filter(s=>s.state==="queued").sort((a,b)=>b.
   if(!Q.length) return "";
   return `<div class="card"><h3>صف تأیید<span class="tag due">${fa(S.smsSeg.filter(s=>s.state==="queued").length)}</span></h3>
    <div class="note">این‌ها هنوز در هیچ گزارشی شمرده نشده‌اند. تا وقتی تأیید نکنی در آمار نمی‌آیند.</div>
-   ${Q.map(s=>`<div class="item"><div class="t">${esc(s.driver||s.phone||"ناشناس")} • ${jal(s.date)} ${faNum(s.time||"")}<span class="tag ${s.kind==="fix"?"due":"soon"}">${SEG_L[s.kind]||s.kind}</span>${s.by==="ai"?'<span class="tag">دستیار</span>':""}<span class="tag">اطمینان ${fa(Math.round(s.conf*100))}٪</span></div>
+   ${Q.map(s=>`<div class="item" style="${secBar(smsSec(s))}"><div class="t">${secTag(smsSec(s))}${esc(s.driver||s.phone||"ناشناس")} • ${jal(s.date)} ${faNum(s.time||"")}<span class="tag ${s.kind==="fix"?"due":"soon"}">${SEG_L[s.kind]||s.kind}</span>${s.by==="ai"?'<span class="tag">دستیار</span>':""}<span class="tag">اطمینان ${fa(Math.round(s.conf*100))}٪</span></div>
     <div style="white-space:pre-wrap;font-size:14px;margin:4px 0">${esc(s.body)}</div>
     ${s.kind==="fix"?`<div class="note">به نظر می‌رسد اصلاح یک گزارش قبلی است. اگر درست است، ثبتِ همان مورد را لغو کن تا دوباره وارد شود:</div>
       ${fixTargets(s).map(y=>`<div class="m">• ${jal(y.date)} ${faNum(y.time||"")} — ${esc(String(y.body).slice(0,60))} <button class="ghost" data-segrev="${y.id}" style="min-height:0;padding:3px 9px">لغو ثبت</button></div>`).join("")||'<div class="m">گزارش ثبت‌شده‌ای از این فرستنده در ۴۸ ساعت گذشته پیدا نشد.</div>'}`:""}
@@ -1582,7 +1748,7 @@ function vCases(){ const O=S.cases.filter(c=>c.state!=="closed").sort((a,b)=>a.o
   C=S.cases.filter(c=>c.state==="closed").sort((a,b)=>b.closedAt-a.closedAt).slice(0,5);
   if(!O.length&&!C.length) return "";
   const one=(c,open)=>{ const mn=caseMin(c), long=open&&mn>=1440;
-    return `<div class="item"><div class="t">${esc(mName(c.subject))}<span class="tag ${open?(long?"due":"soon"):"ok"}">${open?"باز":"بسته"}</span>${long?'<span class="tag due">بیش از ۲۴ ساعت</span>':""}${c.alka?`<span class="tag">آلکا ${esc(c.alka)}</span>`:""}</div>
+    return `<div class="item" style="${secBar(secOf(c.subject))}"><div class="t">${secTag(secOf(c.subject))}${esc(mName(c.subject))}<span class="tag ${open?(long?"due":"soon"):"ok"}">${open?"باز":"بسته"}</span>${long?'<span class="tag due">بیش از ۲۴ ساعت</span>':""}${c.alka?`<span class="tag">آلکا ${esc(c.alka)}</span>`:""}</div>
      <div class="m">از ${jal(localISO(new Date(c.openedAt)))} ساعت ${faNum(new Date(c.openedAt).toTimeString().slice(0,5))}${c.closedAt?` تا ${jal(localISO(new Date(c.closedAt)))} ساعت ${faNum(new Date(c.closedAt).toTimeString().slice(0,5))}`:""} • ${f1(mn/60)} ساعت${mn>=2880?" (سقف ۴۸ ساعت)":""} • ${fa((c.events||[]).length)} رویداد</div>
      ${(c.events||[]).slice(-3).map(e=>`<div class="m">• ${faNum(new Date(e.at).toTimeString().slice(0,5))} — ${esc(e.text)}</div>`).join("")}
      ${c.rep?`<div class="note" style="white-space:pre-wrap;margin-top:5px">${esc(c.rep)}</div>`:""}
@@ -1791,7 +1957,7 @@ async function smsConvert(kind,x,quiet,col){
   col=col||"sms";                                      // قطعه‌های یک پیامک در smsSeg ثبت می‌شوند، نه در sms
   x=Object.assign({},x,{date:x.rdate||x.date});       // گزارش به روزی ثبت می‌شود که در متن آمده
   const say=m=>{ if(!quiet) alert(m); }, made=[], rev=[], days_=[];
-  const mk=async(col,o)=>{ await save(col,o); made.push([col,o.id]); };
+  const mk=async(col,o)=>{ if(o&&o.machineId&&!o.sec) o.sec=secOf(o.machineId); await save(col,o); made.push([col,o.id]); };
   const ch=async(col,old,nw)=>{ rev.push([col,JSON.parse(JSON.stringify(old))]); await save(col,nw); };
   const done=async(note,linked)=>{ await save(col,Object.assign({},(S[col]||[]).find(y=>y.id===x.id)||x,{status:"done",made,rev,days:days_,autoNote:note,auto:!!quiet,linked:linked||""})); say(note); return true; };
   const needM=()=>{ if(x.machineId) return true; say("ابتدا در «اصلاح دسته‌بندی» دستگاه را انتخاب کن."); return false; };
@@ -1825,11 +1991,11 @@ async function smsConvert(kind,x,quiet,col){
     else { if(!mn){ const r=prompt("مدت سوخت‌گیری به دقیقه:",""); if(r===null) return false; mn=+toEn(r)||0; }
       if(!lt){ const r=prompt("مقدار سوخت به لیتر (اگر نمی‌دانی خالی بگذار):",""); if(r===null) return false; lt=+toEn(r)||0; }
       const r2=prompt("کارکرد دستگاه هنگام سوخت‌گیری ("+unitName(mm)+") — اختیاری:",""); if(r2!==null) us=+toEn(r2)||0; }
-    const fid=uid(); await mk("fuel",{id:fid,machineId:x.machineId,date:x.date,liters:lt,usage:us,cost:+x.cost||0,station:x.station||"",min:mn,fromT:x.fromT||"",toT:x.toT||"",src:"sms",driver:x.driver||"",notes:note});
+    const fid=uid(); await mk("fuel",{id:fid,machineId:x.machineId,date:x.date,liters:lt,usage:us,cost:+x.cost||0,station:x.station||"",card:x.card||"",min:mn,fromT:x.fromT||"",toT:x.toT||"",src:"sms",driver:x.driver||"",notes:note});
     if(mm&&us>mUsage(mm)) await ch("machines",mm,Object.assign({},mm,{usage:us,usageAt:todayISO()}));
     return done(`سوخت‌گیری ${mName(x.machineId)}${x.station?" در جایگاه "+x.station:""} برای ${jal(x.date)} ثبت شد${lt?" ("+fa(lt)+" لیتر"+(x.cost?"، "+fa(x.cost)+" تومان":"")+")":""}${mn?" و "+fa(mn)+" دقیقه معطلی حساب شد":""}.`,"fuel:"+fid); }
   if(kind==="stop"){ let mn=+x.minutes||0; if(!mn){ if(quiet) return false; const r=prompt("مدت توقف تولید به دقیقه:",""); if(r===null) return false; mn=+toEn(r)||0; } if(!mn) return false;
-    const sid=uid(); await mk("stops",{id:sid,date:x.date,min:mn,cat:x.type==="fault"?"خرابی ناوگان":"سایر",machineId:x.machineId||"",notes:(x.cause?x.cause+" — ":"")+note});
+    const sid=uid(); await mk("stops",{id:sid,date:x.date,min:mn,cat:x.type==="fault"?"خرابی ناوگان":(x.cause||"سایر"),machineId:x.machineId||"",cost:+x.cost||0,fromT:x.fromT||"",toT:x.toT||"",notes:(x.cause?x.cause+" — ":"")+note});
     await syncDown(x.date); return done("در توقف‌های تولید ثبت شد.","stops:"+sid); }
   if(kind==="ready"){ if(!needM()) return false; const open=S.faults.filter(f=>f.machineId===x.machineId&&f.status!=="fixed");
     for(const f of open) await ch("faults",f,Object.assign({},f,{status:"fixed",fixedDate:x.date}));
@@ -1839,6 +2005,11 @@ async function smsConvert(kind,x,quiet,col){
   if(kind==="svcdue"){ if(!needM()) return false;
     await mk("tasks",{id:uid(),kind:"pm",title:"تعویض روغن — اعلام راننده"+(x.km?": "+fa(x.km)+" کیلومتر کارکرد":""),machineId:x.machineId,notes:note,due:x.date,interval:0,usageInterval:0,priority:"عادی",status:"open",created:todayISO(),src:"sms"});
     return done(`یک کار نگهداری برای ${mName(x.machineId)} در «تعمیر و نگهداری» باز شد.`); }
+  if(kind==="km"){ if(!needM()) return false; if(!(+x.km>0)){ say("کیلومتر خوانده نشد."); return false; }
+    await mk("log",{id:uid(),machineId:x.machineId,date:x.date,title:"اعلام کیلومتر از پیامک",kind:"km",usage:+x.km,cost:0,notes:note});
+    const mm2=S.machines.find(q=>q.id===x.machineId);
+    if(mm2&&+x.km>(+mm2.km||0)) await ch("machines",mm2,Object.assign({},mm2,{km:+x.km}));
+    return done(`کیلومتر ${fa(x.km)} برای ${mName(x.machineId)} ثبت شد.`); }
   if(kind==="service"){ if(!needM()) return false; await mk("log",{id:uid(),machineId:x.machineId,date:x.date,title,kind:"service",usage:mm?mUsage(mm):0,cost:0,notes:note});
     return done(`سرویس «${title}» در سابقه‌ی ${mName(x.machineId)} ثبت شد.`); }
   if(kind==="att"){ if(!needC()) return false; const ad=addDays(x.date,/پس\s*فردا|پس‌فردا/.test(x.body)?2:/فردا/.test(x.body)?1:0), id=ad+"_"+x.contactId, old=S.att.find(a=>a.id===id), st2=x.att||"مرخصی استحقاقی", nw={id,date:ad,contactId:x.contactId,status:st2,notes:x.body};
@@ -2024,7 +2195,7 @@ async function attSet(cid,patch){const d=attDay||todayISO(), id=d+"_"+cid, r=S.a
   if(!n.status&&!(+n.ot)&&!(+n.hours)){ if(S.att.some(x=>x.id===id)) await del("att",id); return; } await save("att",n);}
 
 /* ---------- کارگران محوطه و کارواش ---------- */
-const ROLES=["راننده","کارگر محوطه","کارواش","اپراتور بچینگ","تعمیرکار","اپراتور / سایر"];
+const ROLES=["راننده","سرشوفر","کارگر محوطه","کارواش","اپراتور بچینگ","تعمیرکار","اپراتور / سایر"];
 const roleOf=c=>c.role||((S.machines.find(m=>m.id===c.machineId)||{}).type==="بچینگ"?"اپراتور بچینگ":"راننده");
 const staff=()=>S.contacts.filter(c=>c.active!==false);
 const workers=()=>staff().filter(c=>roleOf(c)!=="راننده");
@@ -3544,7 +3715,9 @@ document.addEventListener("click",async e=>{
       await lexLearn(cur,cur.type); await caseTouch(cur); await verifRun(cur); } return; }
   if(b.dataset.segign){ const s=S.smsSeg.find(y=>y.id===b.dataset.segign); if(!s) return;
     await save("smsSeg",Object.assign({},s,{state:"ignored",status:"archived"})); if(s.kind==="rep") await lexLearn(s,"greet"); return; }
+  if(b.dataset.dumpw){ LS.set("dumpWin",+b.dataset.dumpw); render(); return; }
   if(b.id==="seedB"){ b.disabled=true; await seedBatch(true); b.disabled=false; return; }
+  if(b.id==="seedD"){ b.disabled=true; await seedDump(true); b.disabled=false; return; }
   if(b.dataset.segsug){ const s=S.smsSeg.find(y=>y.id===b.dataset.segsug); if(!s||!s.volSug) return;
     await save("smsSeg",Object.assign({},s,{volFix:s.volSug,conf:.9,by:"user"})); return; }
   if(b.dataset.mtask){ const c=S.contacts.find(k=>k.id===b.dataset.mtask); if(!c) return;
