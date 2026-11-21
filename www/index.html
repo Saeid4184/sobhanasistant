@@ -228,7 +228,7 @@ const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۱ آذر — ۱۵";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const APP_BUILD="۱ آذر — ۱۶";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum","users","ulog"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[],users:[],ulog:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -327,7 +327,9 @@ async function load(){
   if(AppP){ try{ AppP.addListener("appUrlOpen",d=>openDeep(d&&d.url)); const r=await AppP.getLaunchUrl(); if(r&&r.url) openDeep(r.url); }catch(e){} }
 }
 let roWarned=0;
-function roBlock(){ if(!isRO()) return false;
+function roBlock(){
+  if(SCOPING){ console.warn("نوشتن در زمان رندرِ فیلترشده نادیده گرفته شد"); return true; }
+  if(!isRO()) return false;
   if(Date.now()-roWarned>2500){ roWarned=Date.now();
     try{ tdToast("دسترسی شما فقط مشاهده است؛ امکان ثبت یا تغییر نیست."); }catch(e){} }
   return true; }
@@ -392,26 +394,35 @@ function chart(type,labels,values,color){
 }
 
 /* ---------- نما ---------- */
-/* نقشی که فقط یک بخش را می‌بیند: هنگام رندر، نسخه‌ی فیلترشده‌ی داده جای اصل
-   می‌نشیند و بعد برمی‌گردد. این کار فقط برای نقش‌های «فقط مشاهده» انجام
-   می‌شود، پس هیچ‌وقت داده‌ی فیلترشده ذخیره نمی‌شود. مرز واقعی داده روی
-   سرور همگام‌سازی است؛ این لایه برای دستگاه مشترک است. */
+/* نقشی که همه‌ی داده را نمی‌بیند: هنگام رندر، نسخه‌ی فیلترشده‌ی داده جای اصل
+   می‌نشیند و در پایانِ همان رندر برمی‌گردد. رندر همگام است و تا تمام نشود
+   کد دیگری اجرا نمی‌شود، پس چیزی از نسخه‌ی فیلترشده ذخیره نمی‌شود؛ برای
+   احتیاط، نوشتن در همین بازه هم مسدود است (SCOPING).
+   مرز واقعی داده روی سرور همگام‌سازی است؛ این لایه برای دستگاه مشترک است. */
+let SCOPING=0;
 function scoped(fn){
-  const a=RLU().secs;
-  if(!ME||a==="*"||!isRO()) return fn();
-  const ids={}; S.machines.forEach(m=>{ if(a.indexOf(secByType(m.type))>=0) ids[m.id]=1; });
+  const R=RLU(), a=R.secs;
+  if(!ME||(a==="*"&&!ownR())) return fn();
+  const ids={}; S.machines.forEach(m=>{ if(a==="*"||a.indexOf(secByType(m.type))>=0) ids[m.id]=1; });
   const known={}; S.machines.forEach(m=>known[m.id]=1);
+  const my=ownR()?myMachs():null, cid=(ME&&ME.cid)||"";
   const okRec=r=>{ if(!r||typeof r!=="object") return true;
-    if(r.sec) return a.indexOf(r.sec)>=0;
     const mid=r.machineId||r.pumpId||r.tractorId||"";
+    if(my){                                  /* فقط داده‌ی خودش */
+      if(r.by) return r.by===meId();
+      if(mid) return my.indexOf(mid)>=0;
+      if(r.contactId) return cid&&r.contactId===cid;
+      return true; }
+    if(r.sec) return a==="*"||a.indexOf(r.sec)>=0;
     if(mid&&known[mid]) return !!ids[mid];
     return true; };
   const keep={};
   const SKIPC={contacts:1,users:1,ulog:1,check:1,rem:1,norms:1};
   for(const c of COLS){ keep[c]=S[c];
     if(SKIPC[c]) continue;
-    S[c]= c==="machines" ? S.machines.filter(m=>!!ids[m.id]) : S[c].filter(okRec); }
-  try{ return fn(); } finally{ for(const c of COLS) S[c]=keep[c]; } }
+    S[c]= c==="machines" ? S.machines.filter(m=>my?my.indexOf(m.id)>=0:!!ids[m.id]) : S[c].filter(okRec); }
+  SCOPING++;
+  try{ return fn(); } finally{ SCOPING--; for(const c of COLS) S[c]=keep[c]; } }
 
 function render(){
   if(uOn()&&!ME){ showLock(); return; }
@@ -2245,7 +2256,7 @@ async function attSet(cid,patch){const d=attDay||todayISO(), id=d+"_"+cid, r=S.a
   if(!n.status&&!(+n.ot)&&!(+n.hours)){ if(S.att.some(x=>x.id===id)) await del("att",id); return; } await save("att",n);}
 
 /* ---------- کارگران محوطه و کارواش ---------- */
-const ROLES=["راننده","سرشوفر","کارگر محوطه","کارواش","اپراتور بچینگ","تعمیرکار","اپراتور / سایر"];
+const ROLES=["راننده","سرشوفر","کارگر محوطه","کارواش","اپراتور بچینگ","تعمیرکار","سرپرست کارخانه","مدیریت کارخانه","اپراتور / سایر"];
 const roleOf=c=>c.role||((S.machines.find(m=>m.id===c.machineId)||{}).type==="بچینگ"?"اپراتور بچینگ":"راننده");
 const staff=()=>S.contacts.filter(c=>c.active!==false);
 const workers=()=>staff().filter(c=>roleOf(c)!=="راننده");
@@ -2372,7 +2383,8 @@ async function hydratePhotos(){for(const img of document.querySelectorAll("img[d
 const UROLES={
   admin:   {n:"ادمین — دسترسی کامل",        tabs:"*",                                  secs:"*",        forms:"*",        w:1,e:1,d:1,gps:1,own:0,set:1,pin:0,home:"today"},
   manager: {n:"مدیر کارخانه — فقط مشاهده",  tabs:"*",                                  secs:"*",        forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"dash"},
-  chief:   {n:"سرشوفر کمپرسی و تریلی",      tabs:["dash","fleet","mach","perf","rep"], secs:["dump"],   forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"fleet"},
+  boss:    {n:"سرپرست کارخانه — فقط مشاهده", tabs:"*",                                  secs:"*",        forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"dash"},
+  chief:   {n:"سرشوفر کمپرسی و تریلی",      tabs:["my","dash","fleet","mach","perf","rep"], secs:["dump"], forms:["drep"], w:1,e:1,d:0,gps:1,own:0,ownW:1,set:0,pin:1,home:"fleet"},
   driver:  {n:"راننده کمپرسی / تریلی",      tabs:["my"],                               secs:["dump"],   forms:["drep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"},
   operator:{n:"اوپراتور بچینگ",             tabs:["my"],                               secs:["batch"],  forms:["orep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"}
 };
@@ -2388,9 +2400,14 @@ function canTab(t){ if(!ME) return t!=="my";
   const R=RLU(), a=R.tabs;
   if(a==="*") return t!=="my"&&(R.set||(t!=="set"&&t!=="usr"));
   return a.indexOf(t)>=0; }
+/* برای سرشوفر خانه‌ی پیش‌فرض ناوگان است ولی گزارش خودش را هم دارد */
 const canSec=x=>{const a=RLU().secs; return a==="*"||!x||a.indexOf(x)>=0;};
 const canForm=k=>{const a=RLU().forms; return a==="*"||a.indexOf(k)>=0;};
 const isRO=()=>!!ME&&!RLU().w;
+/* فقط برگه‌های خودش را می‌نویسد، ولی لازم نیست فقط خودش را ببیند */
+const ownW=()=>!!ME&&(!!RLU().own||!!RLU().ownW);
+/* فقط داده‌ی خودش را می‌بیند */
+const ownR=()=>!!ME&&!!RLU().own;
 const meName=()=>ME?(ME.name||ME.user||""):"";
 const meId=()=>ME?ME.id:"";
 /* دستگاه‌های مجاز این کاربر (برای راننده: ماشین خودش) */
@@ -4828,7 +4845,7 @@ async function shSave(sh){
   if(roBlock()) return [];
   if(ME&&!canForm(sh.kind)){ try{ tdToast("این فرم در دسترسی شما نیست."); }catch(e){} return []; }
   const prev=S.sheets.find(x=>x.id===sh.id);
-  if(ME&&RLU().own&&prev&&prev.by&&prev.by!==meId()){ try{ tdToast("این برگه از شما نیست."); }catch(e){} return []; }
+  if(ownW()&&prev&&prev.by&&prev.by!==meId()){ try{ tdToast("این برگه از شما نیست."); }catch(e){} return []; }
   if(ME&&!sh.by){ sh.by=meId(); sh.byName=meName(); }
   if(prev){ sh.hist=(prev.hist||[]).concat([{at:Date.now(),by:meId(),name:meName()}]).slice(-20); }
   sh.at=Date.now(); const i=S.sheets.findIndex(x=>x.id===sh.id); if(i<0) S.sheets.push(sh); else S.sheets[i]=sh;
@@ -4913,6 +4930,7 @@ function vUsers(){
       <button class="ghost" data-um="new">＋ کاربر جدید</button>
       ${L.some(u=>u.role==="admin")?`<button class="ghost" data-um="reccode">رمز بازیابی تازه</button>`:""}
       ${L.length?`<button class="ghost" data-um="aclfile">فایل دسترسی سرور</button>`:""}
+      <button class="ghost" data-um="psopen">افزودن پرسنل از متن</button>
     </div>
     <div class="note" style="margin-top:8px">ورود با رمز، دسترسی‌ها را در رابط کاربری محدود می‌کند و جلوی اشتباه را می‌گیرد؛
       اما داده روی همین دستگاه ذخیره می‌شود و رمزنگاری نشده است. مرز واقعی داده، سرویس همگام‌سازی است
@@ -4979,6 +4997,8 @@ function uSeedModal(){
   const taken={}; S.users.forEach(u=>{ if(u.cid) taken[u.cid]=u; });
   const guess=c=>{ const r=roleOf(c);
     if(r==="سرشوفر") return "chief";
+    if(r==="سرپرست کارخانه") return "boss";
+    if(r==="مدیریت کارخانه") return "manager";
     if(r==="اپراتور بچینگ") return "operator";
     if(r==="راننده"){ const m=S.machines.find(m=>m.id===c.machineId); return m&&DUMP.indexOf(m.type)>=0?"driver":""; }
     return ""; };
@@ -5011,6 +5031,61 @@ function uShowCreds(list,rec){
     <div class="row" style="margin-top:10px;gap:6px">${list.length?`<button class="ghost" data-um="copycred" data-txt="${esc(txt)}">کپی فهرست</button>`:""}
       <button class="primary" data-jdclose="1">برداشتم</button></div></div>`); }
 
+/* ---------- افزودن پرسنل از متن ---------- */
+/* یک فهرست چسبانده‌شده را می‌خواند: نام، سمت، و شماره‌ی پلاک.
+   پلاک را با کد دستگاه‌های موجود تطبیق می‌دهد و اگر دستگاهی پیدا نشد
+   خودش چیزی نمی‌سازد تا تصمیمش با تو باشد. */
+const PS_ROLE=[
+  [/سرشوفر/,                      "سرشوفر",         "chief"],
+  [/سرپرست\s*کارخانه/,           "سرپرست کارخانه", "boss"],
+  [/مدیر(یت)?\s*کارخانه|^مدیریت/, "مدیریت کارخانه", "manager"],
+  [/ادمین|مدیر\s*سیستم/,          "اپراتور / سایر", "admin"],
+  [/اوپراتور|اپراتور/,            "اپراتور بچینگ",  "operator"],
+  [/راننده/,                      "راننده",         "driver"]
+];
+function psParse(txt){
+  const out=[];
+  String(txt||"").split(/\r?\n/).forEach(line=>{
+    const raw=line.trim(); if(!raw) return;
+    const t=toEn(raw).replace(/[ًٌٍَُِّْ]/g,"");
+    /* شماره‌ی پلاک: آخرین عدد ۴ تا ۶ رقمی در خط */
+    let code=""; const nums=t.match(/\d{4,6}/g); if(nums) code=nums[nums.length-1];
+    let role="", urole="";
+    for(const [re,r,ur] of PS_ROLE){ if(re.test(raw)){ role=r; urole=ur; break; } }
+    /* نوع دستگاه */
+    const type=/تریلی/.test(raw)?"کمپرسی تریلی":(/کمپرسی/.test(raw)?"کمپرسی":(/بچینگ/.test(raw)?"بچینگ":""));
+    /* نام: هر چه پیش از نخستین واژه‌ی سمت یا پلاک بیاید.
+       \b در جاوااسکریپت با حروف فارسی کار نمی‌کند، پس با جای واژه می‌بُریم. */
+    const CUT=/(راننده|سرشوفر|اوپراتور|اپراتور|سرپرست|مدیریت|مدیر|ادمین|بشماره|بسماره|بشمارۀ|شماره|پلاک)/;
+    let nm=raw.replace(/[-–—_]/g," ").replace(/\s+/g," ").trim();
+    const ci=nm.search(CUT);
+    nm=(ci>0?nm.slice(0,ci):nm.replace(new RegExp(CUT.source,"g"),"")).replace(/\s+/g," ").trim();
+    if(!nm) return;
+    out.push({name:nm,role:role||"اپراتور / سایر",urole:urole||"",type,code,
+      line:raw,mach:code?S.machines.find(m=>String(m.code||"").replace(/\D/g,"")===code||String(m.plate||"").replace(/\D/g,"").endsWith(code)):null,
+      dup:S.contacts.find(c=>String(c.name||"").replace(/\s+/g,"")===nm.replace(/\s+/g,""))||null});
+  });
+  return out; }
+
+function psModal(txt,rows){
+  rows=rows||[];
+  showModal(`<div class="tdform"><h3 style="margin:0 0 6px">افزودن پرسنل از متن</h3>
+    <div class="note">فهرست را بچسبان: هر نفر یک خط، با سمت و شماره‌ی پلاک. بعد «بررسی» را بزن تا پیش از ثبت ببینی چه می‌شود.</div>
+    <textarea id="psTxt" rows="7" dir="rtl" placeholder="محمد ایلخانی راننده کمپرسی بشماره پلاک ۶۲۵۹۶">${esc(txt||"")}</textarea>
+    <div class="row" style="margin-top:8px;gap:6px"><button class="ghost" data-um="pscheck">بررسی</button>
+      ${rows.length?`<button class="primary" data-um="psgo">ثبت ${fa(rows.filter(r=>!r.dup).length)} نفر</button>`:""}
+      <button class="ghost" data-jdclose="1">بستن</button></div>
+    ${rows.length?`<div class="scrollx" style="margin-top:10px"><table><thead><tr><th>نام</th><th>سمت</th><th>دستگاه</th><th>وضعیت</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.role)}</td>
+        <td>${r.mach?esc(r.mach.name):(r.code?`<span class="m">پلاک ${faNum(r.code)}</span>`:"—")}</td>
+        <td>${r.dup?'<span class="tag">قبلاً هست</span>':r.code&&!r.mach?'<span class="tag due">دستگاه پیدا نشد</span>':'<span class="tag ok">آماده</span>'}</td></tr>`).join("")}
+      </tbody></table></div>
+      ${rows.some(r=>r.code&&!r.mach)?`<div class="note" style="margin-top:8px;color:var(--due)">دستگاهِ پلاک‌های نشان‌داده‌شده در بانک ماشین‌آلات نیست.
+        پرسنل ثبت می‌شود ولی دستگاهی به او وصل نمی‌شود؛ یا اول دستگاه را در تب ماشین‌آلات بساز، یا بعداً از ویرایش پرسنل وصلش کن.
+        <label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input id="psMk" type="checkbox" style="width:auto"> دستگاه‌های پیدانشده هم ساخته شوند (با همین کد و نوع)</label></div>`:""}`:""}
+    <div class="note" id="pserr" style="margin-top:6px;color:var(--bad)"></div></div>`);
+  window.__ps=rows; }
+
 /* ---------- فایل دسترسی سرور همگام‌سازی ---------- */
 /* هر کاربر یک توکن اختصاصی می‌گیرد. سرویس همگام‌سازی با همین توکن تشخیص
    می‌دهد طرف کیست و فقط داده‌ی مجاز او را می‌دهد و می‌پذیرد. تا وقتی این
@@ -5025,8 +5100,10 @@ async function aclBuild(){
     /* سرشوفر و هر نقش بخشی: همه‌ی دستگاه‌های بخش‌های مجازش را می‌بیند */
     if(R.secs!=="*"&&!R.own) S.machines.forEach(m=>{ if(R.secs.indexOf(secByType(m.type))>=0&&mach.indexOf(m.id)<0) mach.push(m.id); });
     return {token:u.stok,uid:u.id,name:u.name||u.user,role:u.role,cid:u.cid||"",
-      full:R.secs==="*"&&!R.own, own:!!R.own, w:!!R.w,
-      secs:R.secs==="*"?null:R.secs.slice(), mach};
+      full:R.secs==="*"&&!R.own, own:!!R.own, ownw:!!R.ownW, w:!!R.w,
+      secs:R.secs==="*"?null:R.secs.slice(),
+      mach,                              /* دستگاه‌هایی که می‌تواند ببیند */
+      machw:(u.mach||[]).slice()};        /* دستگاه‌هایی که می‌تواند برایشان ثبت کند */
   });
   return {app:"sobhan-beton",made:new Date().toISOString(),note:"این فایل را در /opt/sobhan/sync-users.json بگذار و سرویس را دوباره راه بیانداز.",users}; }
 
@@ -5037,7 +5114,7 @@ function aclModal(j){
     <div class="note" style="margin-top:8px;color:var(--due)">توکن هر نفر را فقط یک بار و فقط در تنظیمات همگام‌سازی گوشی خودش وارد کن.
       هر بار این فایل را بسازی، توکن‌های تازه برای کاربران بی‌توکن ساخته می‌شود؛ توکن‌های قبلی عوض نمی‌شوند.</div>
     <div class="scrollx"><table><thead><tr><th>کاربر</th><th>دسترسی</th><th>توکن</th></tr></thead><tbody>
-      ${j.users.map(u=>`<tr><td>${esc(u.name)}</td><td>${u.full?(u.w?"کامل":"کامل، فقط خواندن"):u.own?"فقط خودش":"بخش "+(u.secs||[]).map(x=>esc(secN(x))).join("، ")+(u.w?"":"، فقط خواندن")}</td>
+      ${j.users.map(u=>`<tr><td>${esc(u.name)}</td><td>${u.full?(u.w?"کامل":"کامل، فقط خواندن"):u.own?"فقط خودش":"بخش "+(u.secs||[]).map(x=>esc(secN(x))).join("، ")+(u.w?(u.ownw?"، ثبت فقط برای خودش":""):"، فقط خواندن")}</td>
         <td dir="ltr" style="font-size:11px;word-break:break-all">${esc(u.token)}</td></tr>`).join("")}</tbody></table></div>
     <div class="row" style="margin-top:10px;gap:6px"><button class="primary" data-um="acldl">گرفتن فایل</button>
       <button class="ghost" data-um="aclcopy">کپی توکن‌ها</button><button class="ghost" data-jdclose="1">بستن</button></div></div>`);
@@ -5146,12 +5223,31 @@ document.addEventListener("click",async e=>{
       while(S.users.some(x=>x.user===us)){ us=(base.length>2?base:"u")+(++k); }
       const pw=uPin4();
       const u={id:uid(),name:c.name,user:us,role:p.role,kind:"pin",cid:c.id,active:true,must:true,at:Date.now(),
+        plant:p.role==="operator"?(S.machines.find(m=>m.id===c.machineId)||{}).code||"":"",
         mach:c.machineId&&S.machines.some(m=>m.id===c.machineId&&DUMP.indexOf(m.type)>=0)?[c.machineId]:[]};
       Object.assign(u,await pwMake(pw)); S.users.push(u); made.push({name:c.name,role:p.role,pw}); }
     await persist("users"); await uLog("add",fa(made.length+(adm?1:0))+" کاربر");
     if(adm&&!ME){ ME=S.users.find(u=>u.role==="admin"&&u.active!==false)||null; sesSave(); }
     modalClose(); render(); uShowCreds(made,rec); return; }
 
+  if(a==="psopen"){ psModal("",[]); return; }
+  if(a==="pscheck"){ const t=(document.getElementById("psTxt")||{}).value||"";
+    const rows=psParse(t); if(!rows.length){ err("pserr","هیچ خطی خوانده نشد."); return; }
+    psModal(t,rows); return; }
+  if(a==="psgo"){ const rows=window.__ps||[]; if(!rows.length) return;
+    const mkMiss=(document.getElementById("psMk")||{}).checked===true;
+    let nc=0,nm=0;
+    for(const r of rows){
+      if(r.dup) continue;
+      let mid=r.mach?r.mach.id:"";
+      if(!mid&&r.code&&mkMiss&&r.type){ const m={id:uid(),name:(r.type==="کمپرسی تریلی"?"تریلی ":"کمپرسی ")+faNum(r.code),
+          type:r.type,code:r.code,status:"آماده‌به‌کار",unit:"km",at:Date.now()};
+        await save("machines",m); mid=m.id; nm++; }
+      await save("contacts",{id:uid(),name:r.name,role:r.role,machineId:mid,active:true,at:Date.now()});
+      nc++; }
+    modalClose(); render();
+    try{ tdToast(fa(nc)+" نفر ثبت شد"+(nm?" و "+fa(nm)+" دستگاه ساخته شد":"")+". حالا «ساخت گروهی از پرسنل» را بزن."); }catch(x){}
+    return; }
   if(a==="aclfile"){ aclModal(await aclBuild()); return; }
   if(a==="acldl"){ const j=window.__acl; if(!j) return;
     await saveShare("sync-users.json",new TextEncoder().encode(JSON.stringify(j,null,1)),"application/json"); return; }

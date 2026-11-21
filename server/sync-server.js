@@ -54,8 +54,10 @@ function loadAcl() {
       by[String(u.token)] = {
         uid: String(u.uid || ""), name: String(u.name || ""), role: String(u.role || ""),
         cid: String(u.cid || ""), full: !!u.full, own: !!u.own, w: u.w !== false,
+        ownw: !!u.ownw,
         secs: Array.isArray(u.secs) ? u.secs.map(String) : null,
-        mach: Array.isArray(u.mach) ? u.mach.map(String) : []
+        mach: Array.isArray(u.mach) ? u.mach.map(String) : [],
+        machw: Array.isArray(u.machw) ? u.machw.map(String) : (Array.isArray(u.mach) ? u.mach.map(String) : [])
       };
     });
     acl = { by: by, n: Object.keys(by).length };
@@ -74,22 +76,25 @@ function who(req) {
   const t = req.headers["x-app-token"] || "";
   const a = loadAcl();
   if (a && a.by[t]) return a.by[t];
-  if (t && t === APP) return { uid: "", name: "APP_TOKEN", role: "admin", full: true, own: false, w: true, secs: null, mach: [] };
+  if (t && t === APP) return { uid: "", name: "APP_TOKEN", role: "admin", full: true, own: false, ownw: false, w: true, secs: null, mach: [], machw: [] };
   return null;
 }
 
-/* آیا این رکورد در دسترس این کاربر است؟ */
-function allowed(u, col, r) {
+/* آیا این رکورد در دسترس این کاربر است؟
+   forWrite=true یعنی می‌خواهد آن را بفرستد یا حذف کند. سرشوفر کل بخش خودش را
+   می‌خواند ولی فقط برای دستگاه خودش ثبت می‌کند، پس دو دامنه جداست. */
+function allowed(u, col, r, forWrite) {
   if (!u || u.full) return true;
   if (!r || typeof r !== "object") return false;
-  if (u.own) {
+  if (u.own || (forWrite && u.ownw)) {
+    const mw = forWrite ? (u.machw || []) : u.mach;
     if (!OWN_COLS[col]) return false;
     if (col === "users") return String(r.id || "") === u.uid;
     if (String(r.by || "") === u.uid) return true;
     if (col === "contacts") return String(r.id || "") === u.cid;
-    if (col === "machines") return u.mach.indexOf(String(r.id || "")) >= 0;
+    if (col === "machines") return mw.indexOf(String(r.id || "")) >= 0;
     const mid = String(r.machineId || "");
-    if (mid && u.mach.indexOf(mid) >= 0) return true;
+    if (mid && mw.indexOf(mid) >= 0) return true;
     if (String(r.contactId || "") === u.cid && u.cid) return true;
     return false;
   }
@@ -173,7 +178,7 @@ function push(body, dev, u) {
     for (i = 0; i < arr.length; i++) {
       r = arr[i];
       if (!r || typeof r !== "object" || !r.id) continue;
-      if (!allowed(u, c, r)) { skipped++; continue; }
+      if (!allowed(u, c, r, true)) { skipped++; continue; }
       uu = +r.u || 0;
       tb = db.tombs[tkey(c, r.id)];
       if (tb && (+tb.u || 0) >= uu) continue;         // بعد از این تغییر حذف شده: زنده نشود
@@ -192,7 +197,7 @@ function push(body, dev, u) {
     store = db.cols[tb.c];
     ex = store && store[tb.id];
     /* حذف را فقط از کسی می‌پذیریم که به آن رکورد دسترسی داشته است */
-    if (!allowed(u, tb.c, ex || { id: tb.id })) { skipped++; continue; }
+    if (!allowed(u, tb.c, ex || { id: tb.id }, true)) { skipped++; continue; }
     if (ex && (+ex.u || 0) > uu) continue;            // بعد از حذف دوباره ساخته شده
     if (ex) delete store[tb.id];
     const old = db.tombs[key];
