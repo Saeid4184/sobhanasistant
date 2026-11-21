@@ -222,9 +222,9 @@ const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="۳۰ آبان — ۱۲";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
-const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex"];
-const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[]};
+const APP_BUILD="۳۰ آبان — ۱۳";   // با هر تحویل عوض می‌شود تا معلوم باشد کدام نسخه نصب است
+const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs"];
+const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[]};
 let DB=null, SAMPLE=null, ready=false;
 
 const LS={
@@ -2891,7 +2891,7 @@ function vPump(){const {f,t}=repRange(), R=S.pumpjobs.filter(x=>inR(x.date,f,t))
     const ppl=[x.contactId?cName(x.contactId):"",...String(x.workers||"").split(/[،,]/)].map(s=>s.trim()).filter(Boolean);
     for(const nm of new Set(ppl)){const q=byC[nm]||(byC[nm]={n:0,m:0}); q.n++; q.m+=+x.m3||0;}}
   const pumps=S.machines.filter(m=>m.type==="پمپ بتن");
-  return `${repChips()}
+  return `${repChips()}${vPumpFiles()}
   <div class="card"><h3>ثبت اعزام پمپ</h3>
    ${pumps.length?`<div class="grid2"><div><label>تاریخ</label>${jdate("pjd",t)}</div><div><label>پروژه / مشتری</label><input id="pjc" list="pjcl"><datalist id="pjcl">${[...new Set(S.pumpjobs.map(x=>x.customer).filter(Boolean))].slice(-40).map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
     <div><label>مقطع</label><select id="pjs">${SECTS.map(x=>`<option>${x}</option>`).join("")}</select></div><div><label>متراژ (م³)</label><input id="pjm" type="number" inputmode="decimal"></div>
@@ -3002,6 +3002,80 @@ async function fixBig(){ try{
   for(const f of S.faults.filter(y=>+y.downH>48&&/گزارش پیامکی/.test(y.notes||""))) await save("faults",Object.assign({},f,{downH:0}));
   for(const f of S.fuel.filter(y=>+y.min>720)) await save("fuel",Object.assign({},f,{min:0})); }catch(e){} }
 
+/* ---------- فایل عملکرد هر پمپ + بایگانی مستندات مقاطع از گروه بله ---------- */
+const baleCfg=()=>LS.get("bale",{url:"",token:""});
+const BALE_ON=()=>{const c=baleCfg();return !!(c.url&&c.token);};
+async function baleGet(pth){ const c=baleCfg(); if(!c.url) throw new Error("آدرس پل بله در تنظیمات وارد نشده");
+  const r=await fetch(c.url.replace(/\/$/,"")+pth,{headers:{"x-app-token":c.token||""}});
+  if(!r.ok) throw new Error("پل بله: HTTP "+r.status);
+  return r; }
+/* حدس پمپ و مقطع از متن پیام؛ هر چه مطمئن نباشد بی‌پمپ می‌ماند تا خودت وصل کنی */
+function pdGuess(cap){ const t=toEn(String(cap||"")).replace(/ي/g,"ی").replace(/ك/g,"ک");
+  const P=S.machines.filter(m=>m.type==="پمپ بتن"), out={pumpId:"",section:"",project:""};
+  for(const m of P){ const code=String(m.code||""), tail=code.slice(-3);
+    if((code&&t.includes(code))||(tail&&new RegExp("(?<!\\d)"+tail+"(?!\\d)").test(t))||(m.name&&t.includes(String(m.name).replace(/^پمپ\s*(بتن)?\s*/,"")))){ out.pumpId=m.id; break; } }
+  const SEC=typeof SECTS!=="undefined"?SECTS:["فونداسیون","دیوار","ستون","سقف","کف"];
+  for(const s of SEC) if(s&&t.includes(s)){ out.section=s; break; }
+  const pr=/(?:پروژه|مشتری|سایت|کارگاه)\s*[:：]?\s*([^\n،,.]{2,28})/.exec(t);
+  if(pr) out.project=pr[1].trim();
+  return out; }
+async function baleSync(manual){
+  if(!BALE_ON()){ if(manual) alert("اول در تنظیمات، آدرس پل بله و رمز اپ را وارد کن."); return 0; }
+  let j; const since=+LS.get("baleTs",0);
+  try{ j=await (await baleGet("/bale/docs?since="+since+"&limit=60")).json(); }
+  catch(e){ if(manual) alert("اتصال به پل بله برقرار نشد: "+(e.message||e)); return 0; }
+  const L=(j&&j.docs)||[]; let n=0, last=since;
+  for(const d of L){ last=Math.max(last,+d.ts||0);
+    if(S.pdocs.some(x=>x.id===d.uid)) continue;
+    let noimg=false;
+    try{ const b=await (await baleGet("/bale/file/"+encodeURIComponent(d.uid))).blob();
+      let dataUrl="";
+      try{ dataUrl=await compress(b); }                       // فشرده‌سازی معمول
+      catch(e){ if(b.size<3e6) dataUrl=await new Promise((rs,rj)=>{const f=new FileReader();f.onload=()=>rs(f.result);f.onerror=()=>rj(new Error("read"));f.readAsDataURL(b);}); }
+      if(dataUrl) await IDB.put("pd_"+d.uid,dataUrl); else noimg=true; }
+    catch(e){ noimg=true; }
+    const g=pdGuess(d.caption);
+    await save("pdocs",{id:d.uid,ts:+d.ts||Date.now(),date:localISO(new Date(+d.ts||Date.now())),
+      pumpId:g.pumpId,section:g.section,project:g.project,caption:String(d.caption||""),from:d.from||"",noimg:noimg,
+      chat:d.chatTitle||"",src:"bale",sec:"pump",w:+d.w||0,h:+d.h||0,size:+d.size||0}); n++; }
+  LS.set("baleTs",last); render();
+  if(manual) alert(n?`${fa(n)} سند از بله بایگانی شد.`:"سند تازه‌ای در بله نبود.");
+  return n; }
+/* فایل عملکرد یک پمپ: اعزام‌ها، متراژ، مقاطع و مستندات */
+function pumpFile(pid,f,t){ const m=S.machines.find(x=>x.id===pid)||{};
+  const J=S.pumpjobs.filter(x=>x.pumpId===pid&&inR(x.date,f,t));
+  const D=S.pdocs.filter(x=>x.pumpId===pid&&inR(x.date,f,t)).sort((a,b)=>b.ts-a.ts);
+  const st=S.stops.filter(x=>x.machineId===pid&&inR(x.date,f,t)), ft=S.faults.filter(x=>x.machineId===pid&&inR(x.date,f,t));
+  const bySec={}; for(const x of J){ const k=x.section||"سایر"; const o=bySec[k]||(bySec[k]={n:0,m:0,doc:0}); o.n++; o.m+=+x.m3||0; }
+  for(const d of D){ const k=d.section||"سایر"; if(bySec[k]) bySec[k].doc++; else bySec[k]={n:0,m:0,doc:1}; }
+  return {m,J,D,st,ft,bySec,m3:+sumBy(J,x=>x.m3).toFixed(1),
+    noDoc:J.filter(x=>!D.some(d=>d.date===x.date&&(!d.section||d.section===(x.section||""))))};
+}
+function vPumpFiles(){ const {f,t}=repRange(), P=S.machines.filter(m=>m.type==="پمپ بتن"), c=secC("pump");
+  const un=S.pdocs.filter(x=>!x.pumpId).sort((a,b)=>b.ts-a.ts);
+  if(!P.length) return "";
+  return `<div class="card" style="border-inline-start:4px solid ${c}"><h3 style="border-color:${c}">فایل عملکرد پمپ‌ها و مستندات بله${secTag("pump")}</h3>
+   <div class="row"><button class="ghost" id="baleSync">دریافت اسناد از گروه بله</button>
+    <button class="ghost" id="baleCfgBtn">تنظیم پل بله</button></div>
+   <div class="note">${BALE_ON()?`پل بله تنظیم شده. آخرین دریافت: ${+LS.get("baleTs",0)?jal(localISO(new Date(+LS.get("baleTs",0)))):"هنوز هیچ"} • ${fa(S.pdocs.length)} سند بایگانی‌شده.`
+     :"برای این کار یک ربات بله باید در گروه رانندگان پمپ ادمین باشد و پل بله روی سرور ایران نصب شده باشد. ربات فقط عکس‌های بعد از اضافه شدنش را می‌بیند."}</div>
+   ${P.map(m=>{ const F=pumpFile(m.id,f,t); if(!F.J.length&&!F.D.length) return "";
+     return `<details style="margin-top:8px"><summary><b style="color:${c}">${esc(m.name)}</b> — ${fa(F.J.length)} اعزام • ${fa(F.m3)} م³ • ${fa(F.D.length)} سند</summary>
+      ${Object.keys(F.bySec).length?tbl(["مقطع","اعزام","متراژ","سند"],Object.entries(F.bySec).sort((a,b)=>b[1].m-a[1].m).map(q=>[esc(q[0]),fa(q[1].n),fa(+q[1].m.toFixed(1)),q[1].doc?fa(q[1].doc):bad("ندارد",true)])):""}
+      ${F.st.length||F.ft.length?`<div class="m">${F.ft.length?`${fa(F.ft.length)} خرابی`:""}${F.st.length?` • ${f1(sumBy(F.st,x=>x.min)/60)} ساعت توقف`:""}</div>`:""}
+      ${F.D.some(d=>d.noimg)?`<div class="note" style="color:var(--bad)">${fa(F.D.filter(d=>d.noimg).length)} سند فقط با متن ثبت شده و تصویرش نیامده؛ دوباره «دریافت اسناد» را بزن.</div>`:""}
+      ${F.D.length?`<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">${F.D.slice(0,12).map(d=>`<button data-pdoc="${esc(d.id)}" style="padding:0;min-height:0;border-radius:8px;overflow:hidden;width:76px;height:76px;border:1px solid var(--line)"><img data-photo="pd_${esc(d.id)}" alt="" style="width:100%;height:100%;object-fit:cover"></button>`).join("")}</div>
+       ${F.D.length>12?`<div class="m">و ${fa(F.D.length-12)} سند دیگر</div>`:""}`:'<div class="m">سندی برای این بازه بایگانی نشده.</div>'}
+      <div class="row" style="margin-top:6px"><button class="ghost" data-pumpout="${m.id}">خروجی فایل عملکرد</button></div></details>`; }).join("")}
+   ${un.length?`<details style="margin-top:10px" open><summary><b>${fa(un.length)} سند بی‌پمپ — پمپش را انتخاب کن</b></summary>
+    ${un.slice(0,20).map(d=>`<div class="item"><div class="t">${esc(d.from||"ناشناس")} • ${jal(d.date)}${d.section?` • ${esc(d.section)}`:""}</div>
+     ${d.caption?`<div class="m">${esc(String(d.caption).slice(0,90))}</div>`:""}
+     <div class="row" style="margin-top:5px"><img data-photo="pd_${esc(d.id)}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">
+      <select data-pdset="${esc(d.id)}"><option value="">پمپ —</option>${P.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select>
+      <button class="danger" data-pddel="${esc(d.id)}">حذف</button></div></div>`).join("")}</details>`:""}
+   ${(()=>{const nd=P.map(m=>({m,F:pumpFile(m.id,f,t)})).filter(q=>q.F.noDoc.length);
+     return nd.length?`<div class="note" style="margin-top:8px">اعزام‌هایی که سندی برایشان نرسیده: ${nd.map(q=>`${esc(q.m.name)} (${fa(q.F.noDoc.length)})`).join("، ")}</div>`:"";})()}
+  </div>`; }
 /* ---------- گزارش هفتگی و ماهانه‌ی کمپرسی و تریلی ---------- */
 const DCAUSES=["","خرابی ناوگان","تعمیرگاه","صف سوخت","سوخت‌گیری","معاینه فنی","پنچری و لاستیک","تعویض روغن و سرویس","کارواش","دیاگ","باطری‌سازی","آهنگری و جوشکاری","باد و تنظیم","تعمیر برنامه‌دار","انتظار بار","سایر"];
 const BADC=new Set(["خرابی ناوگان","تعمیرگاه","پنچری و لاستیک","دیاگ","باطری‌سازی","آهنگری و جوشکاری"]);
@@ -3806,6 +3880,30 @@ document.addEventListener("click",async e=>{
       await lexLearn(cur,cur.type); await caseTouch(cur); await verifRun(cur); } return; }
   if(b.dataset.segign){ const s=S.smsSeg.find(y=>y.id===b.dataset.segign); if(!s) return;
     await save("smsSeg",Object.assign({},s,{state:"ignored",status:"archived"})); if(s.kind==="rep") await lexLearn(s,"greet"); return; }
+  if(b.id==="baleSync"){ b.disabled=true; b.textContent="در حال دریافت…"; await baleSync(true); b.disabled=false; return; }
+  if(b.id==="baleCfgBtn"){ const c=baleCfg();
+    const u=prompt("آدرس پل بله (مثل http://37.202.225.180:8790)",c.url||""); if(u===null) return;
+    const k=prompt("رمز اپ (APP_TOKEN همان سرور)",c.token||""); if(k===null) return;
+    LS.set("bale",{url:String(u).trim(),token:String(k).trim()});
+    try{ const r=await baleGet("/bale/health"), j=await r.json();
+      alert(j&&j.ok?`پل بله وصل شد. ${fa(j.docs||0)} سند روی سرور${j.token?"":" — ولی توکن ربات بله روی سرور تنظیم نشده"}.`:"پاسخ نامعتبر بود."); }
+    catch(e){ alert("ذخیره شد ولی اتصال برقرار نشد: "+(e.message||e)); }
+    render(); return; }
+  if(b.dataset.pdoc){ const d=S.pdocs.find(x=>x.id===b.dataset.pdoc); if(!d) return;
+    const img=await IDB.get("pd_"+d.id); if(!img) return alert("تصویر این سند روی گوشی نیست.");
+    const w=window.open(""); if(w) w.document.write(`<body style="margin:0;background:#111"><img src="${img}" style="width:100%"><div style="color:#eee;font:13px Tahoma;padding:8px">${esc(d.caption||"")} — ${esc(d.from||"")} — ${jal(d.date)}</div>`);
+    return; }
+  if(b.dataset.pddel){ if(!confirm("این سند از بایگانی حذف شود؟")) return; await IDB.del("pd_"+b.dataset.pddel); await del("pdocs",b.dataset.pddel); return; }
+  if(b.dataset.pumpout){ const {f,t}=repRange(), F=pumpFile(b.dataset.pumpout,f,t);
+    const h=`<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><title>فایل عملکرد ${esc(F.m.name)}</title>
+<style>body{font-family:Tahoma,sans-serif;padding:16px}h1{font-size:17px}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #ccc;padding:5px;text-align:center}
+img{width:31%;margin:1%;border:1px solid #ddd;border-radius:6px}</style>
+<h1>فایل عملکرد ${esc(F.m.name)} — ${jal(f)} تا ${jal(t)}</h1>
+<p>${fa(F.J.length)} اعزام • ${fa(F.m3)} متر مکعب پمپاژ • ${fa(F.D.length)} سند مقطع • ${fa(F.ft.length)} خرابی</p>
+<table><tr><th>مقطع</th><th>اعزام</th><th>متراژ</th><th>سند</th></tr>${Object.entries(F.bySec).map(q=>`<tr><td>${esc(q[0])}</td><td>${fa(q[1].n)}</td><td>${fa(+q[1].m.toFixed(1))}</td><td>${fa(q[1].doc)}</td></tr>`).join("")}</table>
+<h2 style="font-size:14px">مستندات</h2>${(await Promise.all(F.D.slice(0,40).map(async d=>{const im=await IDB.get("pd_"+d.id); return im?`<img src="${im}" alt="${esc(d.caption||"")}">`:"";}))).join("")}
+</html>`;
+    await saveShare(`فایل-عملکرد-${toEn(String(F.m.name)).replace(/\s+/g,"-")}.html`,new TextEncoder().encode(h),"text/html"); return; }
   if(b.id==="dumpAi"){ if(!AI_ON()) return alert("اول در تب تنظیمات آدرس سرور دستیار و رمز اپ را وارد کن.");
     b.disabled=true; b.textContent="در حال تحلیل…"; const {f,t}=repRange(), R=dumpRep(f,t);
     const data={بازه:`${jal(f)} تا ${jal(t)}`,روز_کاری:R.work,جمع:{سرویس:R.tot.n,نُرم:R.tot.norm,تحقق_درصد:R.fill,تناژ:R.tot.tons,
@@ -4006,6 +4104,8 @@ document.addEventListener("change",async e=>{const el=e.target;
   if(el&&el.id==="smsNotify"){ LS.set("smsNotify",el.checked); pushWatch(); }
   if(el&&el.id==="smsAuto") LS.set("smsAuto",el.checked);
   if(el&&el.id==="segOn"){ LS.set("segOn",el.checked); render(); return; }
+  if(el&&el.dataset&&el.dataset.pdset){ const d=S.pdocs.find(x=>x.id===el.dataset.pdset);
+    if(d&&el.value) await save("pdocs",Object.assign({},d,{pumpId:el.value})); return; }
   if(el&&el.id==="lexOn"){ LS.set("lexOn",el.checked); render(); return; }
   if(el&&el.id==="noteWho"){ const c=S.contacts.find(k=>k.id===el.value), t=document.getElementById("noteTxt"); if(c&&t) t.value=c.aiNote||""; return; }
   const gid2=el&&el.dataset&&(el.dataset.segt||el.dataset.segmc);
@@ -5616,7 +5716,7 @@ render(); load();
     parts: "قطعه", returns: "بتن برگشتی", silos: "شمارش سیلو", counts: "شمارش مواد", receipts: "ورود مصالح", scores: "کسری کارکرد", norms: "نُرم", pumpjobs: "پمپاژ",
     att: "حضور و غیاب", washes: "شستشو", jobs: "کار محوطه", tasks: "کار", incidents: "حادثه", stops: "توقف تولید", log: "سابقه‌ی دستگاه", notes: "یادداشت", ideas: "ایده",
     check: "مورد چک‌لیست", ticks: "تیک چک‌لیست", rem: "یادآوری", tires: "لاستیک", mixes: "طرح اختلاط", batches: "بچ", calib: "کالیبراسیون", reports: "گزارش", looks: "بازدید ظاهری",
-    smsSeg: "قطعه‌ی پیامک", cases: "پرونده‌ی توقف", verif: "تطبیق GPS", aiLog: "سابقه‌ی دستیار", lex: "الگوی آموخته" };
+    smsSeg: "قطعه‌ی پیامک", cases: "پرونده‌ی توقف", verif: "تطبیق GPS", aiLog: "سابقه‌ی دستیار", lex: "الگوی آموخته", pdocs: "سند مقطع پمپ" };
   var snap = {}, stack = [], gid = 0, undoing = false, tm = 0, MAXG = 40;
   function strip(r) { var o = Object.assign({}, r); delete o.u; return JSON.stringify(o); }
   function resnap(col) { var m = {}, a = S[col] || [], i; for (i = 0; i < a.length; i++) if (a[i] && a[i].id != null) m[a[i].id] = strip(a[i]); snap[col] = m; }
