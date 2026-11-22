@@ -237,7 +237,7 @@ const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="1.0.17";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
+const APP_BUILD="1.0.18";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum","users","ulog","tcheck"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[],users:[],ulog:[],tcheck:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -1796,12 +1796,48 @@ function segLine(s){ const v=verOf(s.id);
    ${s.machineId?`<div class="m">${esc(mName(s.machineId))}${s.minutes?` • ${fa(s.minutes)} دقیقه`:""}${s.liters?` • ${fa(s.liters)} لیتر`:""}${s.fromT?` • ${faNum(s.fromT)}`:""}</div>`:""}
    ${s.autoNote?`<div class="note" style="margin:3px 0">${esc(s.autoNote)}</div>`:""}
    ${v&&v.checks.length?`<div class="m">GPS: ${esc(v.checks.join(" • "))}</div>`:""}
+   ${s.state==="queued"?segFields(s):""}
    <div class="row" style="margin-top:5px">${s.state==="queued"&&s.kind==="rep"&&smsKind(s)?`<button class="primary" data-segok="${s.id}">${SMS_BTN[smsKind(s)]||"ثبت"}</button>`:""}
     ${s.state==="queued"?`<button class="ghost" data-segign="${s.id}">نادیده بگیر</button>`:""}
     ${s.state==="done"?`<button class="ghost" data-segrev="${s.id}">لغو ثبت</button>`:""}
     ${s.state==="done"&&!s.vState?`<button class="ghost" data-segver="${s.id}">تطبیق GPS</button>`:""}</div></div>`; }
 function fixTargets(s){ return [...S.smsSeg.filter(y=>y.state==="done"&&y.contactId===s.contactId&&Math.abs(y.ts-s.ts)<48*3600e3&&y.id!==s.id),
   ...S.sms.filter(y=>y.status==="done"&&!y.segs&&y.contactId===s.contactId&&Math.abs(y.ts-s.ts)<48*3600e3)].sort((a,b)=>b.ts-a.ts).slice(0,4); }
+/* ---------- اصلاح دستی یک قطعه‌ی پیامک ----------
+   تا پیش از این، پیام خطا کاربر را به «اصلاح دسته‌بندی» می‌فرستاد که فقط در
+   فهرست پیام‌ها بود، نه در صف تأیید؛ پس جایی برای وارد کردن مدت توقف نبود.
+   حالا هر قطعه در خود صف قابل اصلاح است و هر اصلاح به حافظه‌ی آموخته می‌رود. */
+const SEG_F={
+  stop:    [["minutes","مدت توقف (دقیقه)","num"],["cause","علت","sel:FSTOP"],["fromT","از ساعت","time"],["toT","تا ساعت","time"],["sleep","خواب ماشین","chk"]],
+  fault:   [["minutes","مدت توقف (دقیقه)","num"],["cause","علت","sel:FSTOP"],["sleep","خواب ماشین","chk"]],
+  fuel:    [["liters","لیتر","num"],["cost","مبلغ (تومان)","num"],["station","جایگاه","txt"],["fromT","ورود","time"],["toT","خروج","time"]],
+  trip:    [["n","تعداد سرویس","num"],["tons","تناژ","num"]],
+  km:      [["km","کیلومتر","num"]],
+  service: [["km","کیلومتر","num"],["cost","هزینه (تومان)","num"]],
+  wash:    [["fromT","ورود","time"],["toT","خروج","time"]],
+  ready:   [["fromT","ساعت بازگشت","time"]],
+  batch:   [["volFix","متراژ اصلاح‌شده (م³)","num"]],
+  att:     [["cause","نوع","sel:ATTK"]]
+};
+const ATTK=["مرخصی","غیبت","تأخیر","مأموریت","اضافه‌کاری"];
+function segFields(s){
+  const k=smsKind(s)||s.type, F=SEG_F[k]||SEG_F[s.type]||[];
+  const common=[["rdate","تاریخ گزارش","jd"],["atT","ساعت اعلام‌شده در متن","time"]];
+  const all=F.concat(common);
+  const one=([k2,l,t])=>{
+    const v=s[k2]==null?"":s[k2];
+    if(t==="chk") return `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-segf="${s.id}|${k2}" style="width:auto" ${s[k2]?"checked":""}> ${l}</label>`;
+    if(t==="jd")  return `<div><label>${l}</label><input data-segf="${s.id}|${k2}" inputmode="numeric" value="${v?tdJs(v):""}" placeholder="۱۴۰۵/۰۹/۰۱"></div>`;
+    if(t.indexOf("sel:")===0){ const L=t.slice(4)==="FSTOP"?FSTOP:ATTK;
+      return `<div><label>${l}</label><select data-segf="${s.id}|${k2}"><option value="">—</option>${L.map(c=>`<option ${v===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>`; }
+    const im=(t==="num"||t==="time")?'inputmode="numeric"':"";
+    return `<div><label>${l}</label><input data-segf="${s.id}|${k2}" ${im} value="${esc(String(v))}" placeholder="${t==="time"?"۰۸:۳۰":"—"}"></div>`; };
+  return `<details class="segfix"><summary style="font-size:13px">اصلاح دستی و دقیق‌تر کردن این گزارش</summary>
+    <div class="grid2" style="margin-top:6px">${all.map(one).join("")}</div>
+    <label style="margin-top:6px">یادداشت (در گزارش می‌آید)</label>
+    <input data-segf="${s.id}|unote" value="${esc(String(s.unote||""))}" placeholder="هرچه در متن نیامده ولی باید ثبت شود">
+    <div class="note" style="margin-top:6px">هر چه اینجا اصلاح کنی، همین الگو برای پیام‌های بعدی ${esc(s.driver||"این فرستنده")} یاد گرفته می‌شود.</div>
+  </details>`; }
 function vQueue(){ const Q=S.smsSeg.filter(s=>s.state==="queued").sort((a,b)=>b.ts-a.ts).slice(0,40);
   if(!Q.length) return "";
   return `<div class="card"><h3>صف تأیید<span class="tag due">${fa(S.smsSeg.filter(s=>s.state==="queued").length)}</span></h3>
@@ -1816,6 +1852,7 @@ function vQueue(){ const Q=S.smsSeg.filter(s=>s.state==="queued").sort((a,b)=>b.
       ${s.volFix?`<div class="note" style="color:var(--ok)">متراژ ${f1(s.volFix)} تأیید شد.</div>`:""}`:""}
     <div class="grid2" style="margin-top:6px"><select data-segt="${s.id}">${Object.entries(SMS_T).map(([kk,v])=>`<option value="${kk}" ${s.type===kk?"selected":""}>${v}</option>`).join("")}</select>
      <select data-segmc="${s.id}"><option value="">دستگاه —</option>${S.machines.map(m=>`<option value="${m.id}" ${s.machineId===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select></div>
+    ${segFields(s)}
     <div class="row" style="margin-top:6px">${smsKind(s)?`<button class="primary" data-segok="${s.id}">${SMS_BTN[smsKind(s)]||"ثبت"}</button>`:""}
      ${s.kind!=="rep"?`<button class="ghost" data-segtask="${s.id}">ثبت کار</button>`:""}
      <button class="ghost" data-segign="${s.id}">نادیده بگیر</button><button class="danger" data-segdel="${s.id}">حذف قطعه</button></div></div>`).join("")}</div>`; }
@@ -2035,12 +2072,13 @@ async function smsConvert(kind,x,quiet,col){
   const mk=async(col,o)=>{ if(o&&o.machineId&&!o.sec) o.sec=secOf(o.machineId); await save(col,o); made.push([col,o.id]); };
   const ch=async(col,old,nw)=>{ rev.push([col,JSON.parse(JSON.stringify(old))]); await save(col,nw); };
   const done=async(note,linked)=>{ await save(col,Object.assign({},(S[col]||[]).find(y=>y.id===x.id)||x,{status:"done",made,rev,days:days_,autoNote:note,auto:!!quiet,linked:linked||""})); say(note); return true; };
-  const needM=()=>{ if(x.machineId) return true; say("ابتدا در «اصلاح دسته‌بندی» دستگاه را انتخاب کن."); return false; };
+  const needM=()=>{ if(x.machineId) return true; say("اول دستگاه را از فهرست «دستگاه —» همین کارت انتخاب کن."); return false; };
   const needC=()=>{ if(x.contactId) return true; say("فرستنده در فهرست پرسنل نیست؛ اول شماره‌اش را برای یکی از پرسنل ثبت کن."); return false; };
   const mm=S.machines.find(y=>y.id===x.machineId), who=x.driver||x.phone||"";
-  const title=x.title||x.summary||smsTitle(x.body), note=`گزارش پیامکی ${who} (${jal(x.date)} ${faNum(x.time||"")}): ${x.body}`;
+  const title=x.title||x.summary||smsTitle(x.body);
+  const note=`گزارش پیامکی ${who} (${jal(x.date)} ${faNum(x.time||"")}): ${x.body}`+(x.unote?`\nیادداشت دستی: ${x.unote}`:"");
   if(kind==="ok"){ await save(col,Object.assign({},x,{status:"archived",state:col==="smsSeg"?"ignored":undefined})); return true; }
-  if(kind==="stopnote"){ if(!(+x.minutes>0)){ say("مدت توقف را در «اصلاح دسته‌بندی» وارد کن."); return false; } return done(`${fa(x.minutes)} دقیقه توقف (${x.cause||"سایر"}) در گزارش توقف‌های ${who} حساب شد.`); }
+  if(kind==="stopnote"){ if(!(+x.minutes>0)){ say("مدت توقف در متن پیام نیامده است. «اصلاح دستی و دقیق‌تر کردن این گزارش» را باز کن و مدت توقف را بنویس."); return false; } return done(`${fa(x.minutes)} دقیقه توقف (${x.cause||"سایر"}) در گزارش توقف‌های ${who} حساب شد.`); }
   if(kind==="batch"){ if(!needC()) return false; const segs=bParse(x); let nv=0, na=0, nr=0; if(!segs.length) return false;
     const own=S.contacts.find(k=>k.id===x.contactId), ownM=own&&(S.machines.find(q=>q.id===own.machineId)||{}).type==="بچینگ"?own.machineId:"";
     for(let i=0;i<segs.length;i++){ const g=segs[i], mid=g.machineId||(segs.length===1?x.machineId:"")||ownM;
@@ -4226,6 +4264,7 @@ document.addEventListener("click",async e=>{
   if(b.id==="verAll"){ b.disabled=true; const n=await verifAll(); alert(n?fa(n)+" گزارش با GPS تطبیق داده شد.":"گزارش تطبیق‌نشده‌ای نمانده."); b.disabled=false; return; }
   if(b.dataset.segrun){ const x=S.sms.find(y=>y.id===b.dataset.segrun); if(!x) return; b.disabled=true; await smsProcess(x,false); render(); return; }
   if(b.dataset.segok){ const s=S.smsSeg.find(y=>y.id===b.dataset.segok); if(!s) return; const k=smsKind(s); if(!k) return alert("نوع این قطعه مشخص نیست؛ اول نوعش را انتخاب کن.");
+    if(s.edited) await lexLearn(s,s.type);      /* اصلاح کاربر = آموزش الگو برای همین فرستنده */
     const ok=await smsConvert(k,s,false,"smsSeg");
     if(ok){ const cur=S.smsSeg.find(y=>y.id===s.id)||s; await save("smsSeg",Object.assign({},cur,{state:"done",by:"user"}));
       await lexLearn(cur,cur.type); await caseTouch(cur); await verifRun(cur); } return; }
@@ -4492,6 +4531,19 @@ document.addEventListener("change",async e=>{const el=e.target;
     if(d&&el.value) await save("pdocs",Object.assign({},d,{pumpId:el.value})); return; }
   if(el&&el.id==="lexOn"){ LS.set("lexOn",el.checked); render(); return; }
   if(el&&el.id==="noteWho"){ const c=S.contacts.find(k=>k.id===el.value), t=document.getElementById("noteTxt"); if(c&&t) t.value=c.aiNote||""; return; }
+  if(el&&el.dataset&&el.dataset.segf){
+    const [sid2,fk]=el.dataset.segf.split("|"), sg=S.smsSeg.find(y=>y.id===sid2);
+    if(sg){ const u={edited:true,by:"user",conf:Math.max(sg.conf,.9)};
+      if(fk==="sleep") u.sleep=el.checked;
+      else if(fk==="rdate"){                         /* تاریخ شمسی تایپ‌شده */
+        const t2=toEn(el.value||"").replace(/[^\d]+/g,"/").split("/").filter(Boolean).map(Number);
+        if(!t2.length) u.rdate=null;
+        else if(t2.length===3&&t2[0]>1300&&t2[1]>=1&&t2[1]<=12&&t2[2]>=1&&t2[2]<=31) u.rdate=jToIso(t2[0],t2[1],t2[2]);
+        else { try{ tdToast("تاریخ را مثل ۱۴۰۵/۰۹/۰۱ بنویس."); }catch(e){} return; } }
+      else if(["minutes","liters","cost","n","km","tons","volFix"].indexOf(fk)>=0){ const v=+toEn(el.value)||0; u[fk]=v>0?v:null; }
+      else u[fk]=el.value||null;
+      await save("smsSeg",Object.assign({},sg,u)); }
+    return; }
   const gid2=el&&el.dataset&&(el.dataset.segt||el.dataset.segmc);
   if(gid2){ const s=S.smsSeg.find(y=>y.id===gid2); if(!s) return; const u={edited:true,by:"user",conf:Math.max(s.conf,.9)};
     if(el.dataset.segt){ u.type=el.value; if(el.value!=="stop") u.cause=null; }
