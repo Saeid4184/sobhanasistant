@@ -237,7 +237,7 @@ const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="1.0.18";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
+const APP_BUILD="1.0.19";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum","users","ulog","tcheck"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[],users:[],ulog:[],tcheck:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -2432,17 +2432,19 @@ async function hydratePhotos(){for(const img of document.querySelectorAll("img[d
 /* ---------- کاربران، نقش‌ها و دسترسی ---------- */
 /* هر نقش یک قالب دسترسی است. ادمین از پنل «کاربران» می‌تواند کاربر بسازد،
    غیرفعال کند و رمز را عوض کند. هیچ نقشی در کد قفل‌شده نیست جز خودِ ادمین. */
+const RFORMS=["rwork","rfault","rstop","rfuel"];
 const UROLES={
   admin:   {n:"ادمین — دسترسی کامل",        tabs:"*",                                  secs:"*",        forms:"*",        w:1,e:1,d:1,gps:1,own:0,set:1,pin:0,home:"today"},
   manager: {n:"مدیر کارخانه — فقط مشاهده",  tabs:"*",                                  secs:"*",        forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"dash"},
   boss:    {n:"سرپرست کارخانه — فقط مشاهده", tabs:"*",                                  secs:"*",        forms:[],         w:0,e:0,d:0,gps:1,own:0,set:0,pin:0,home:"dash"},
-  chief:   {n:"سرشوفر کمپرسی و تریلی",      tabs:["my","dash","fleet","mach","perf","rep"], secs:["dump"], forms:["drep"], w:1,e:1,d:0,gps:1,own:0,ownW:1,set:0,pin:1,home:"fleet"},
-  mixchief:{n:"سرشوفر میکسرها",             tabs:["my","dash","fleet","mach","perf","rep"], secs:["mixer"], forms:["mrep"], w:1,e:1,d:0,gps:1,own:0,ownW:1,set:0,pin:1,home:"fleet"},
-  driver:  {n:"راننده کمپرسی / تریلی",      tabs:["my"],                               secs:["dump"],   forms:["drep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"},
-  mixdriver:{n:"راننده میکسر",              tabs:["my"],                               secs:["mixer"],  forms:["mrep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"},
+  chief:   {n:"سرشوفر کمپرسی و تریلی",      tabs:["my","dash","fleet","mach","perf","rep"], secs:["dump"], forms:RFORMS, w:1,e:1,d:0,gps:1,own:0,ownW:1,set:0,pin:1,home:"fleet"},
+  mixchief:{n:"سرشوفر میکسرها",             tabs:["my","dash","fleet","mach","perf","rep"], secs:["mixer"], forms:RFORMS, w:1,e:1,d:0,gps:1,own:0,ownW:1,set:0,pin:1,home:"fleet"},
+  driver:  {n:"راننده کمپرسی / تریلی",      tabs:["my"],                               secs:["dump"],   forms:RFORMS,     w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"},
+  mixdriver:{n:"راننده میکسر",              tabs:["my"],                               secs:["mixer"],  forms:RFORMS,     w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"},
   operator:{n:"اوپراتور بچینگ",             tabs:["my"],                               secs:["batch"],  forms:["orep"],   w:1,e:1,d:0,gps:0,own:1,set:0,pin:1,home:"my"}
 };
 const URK=Object.keys(UROLES);
+const MYV=["میکسر","کمپرسی","کمپرسی تریلی"];   /* دستگاه‌هایی که فرم ساده پوشش می‌دهد */
 const urName=k=>(UROLES[k]||{}).n||k;
 let ME=null;                 /* کاربر نشست جاری؛ null یعنی هنوز کاربری ساخته نشده */
 const uFail={};              /* شمارش رمز غلط، فقط در حافظه */
@@ -4632,7 +4634,47 @@ const SK={
    meta:[],
    cols:[{k:"m",l:"کمپرسی / تریلی",t:"mach:کمپرسی,کمپرسی تریلی"},{k:"mine",l:"معدن",t:"text",dl:"mines"},{k:"mat",l:"مصالح",t:"sel",o:["شن","ماسه","نخاله","سایر"]},
      {k:"n",l:"تعداد سرویس",t:"num"},{k:"bill",l:"شماره بارنامه",t:"text"},{k:"tons",l:"تناژ (تن یا کیلو)",t:"num"},{k:"cause",l:"علت کم‌کاری",t:"sel",o:HAUL_CAUSES},{k:"note",l:"توضیح",t:"text"}]},
- /* --- دو فرم ساده‌ی شخصی: راننده و اوپراتور فقط همین را می‌بینند --- */
+ /* --- فرم ساده‌ی راننده: چهار گزینه، یکی برای هر کاری که راننده گزارش می‌دهد.
+    هر سه نوع دستگاه (میکسر، کمپرسی، کمپرسی تریلی) از همین‌ها استفاده می‌کنند؛
+    نوع دستگاه خودش تعیین می‌کند رکورد در کدام بخش ثبت شود. --- */
+ rwork:{t:"کارکرد",ic:"🚚",lag:1,multi:0,mine:1,
+   hint:"فقط کارکرد امروز خودت",
+   meta:[{k:"shift",l:"شیفت",t:"sel",o:["روز","شب","۲۴ ساعت"]}],
+   fixed:()=>[{m:(myMachList()[0]||{}).code||(myMachList()[0]||{}).name||""}],
+   rowLabel:r=>{ const m=tdMach(r.m,MYV); return m?esc(m.name):"دستگاه من"; },
+   cols:[{k:"m",l:"دستگاه",t:"mach:میکسر,کمپرسی,کمپرسی تریلی"},
+     {k:"n",l:"تعداد سرویس",t:"num"},
+     {k:"m3",l:"متراژ کل (م³) — فقط میکسر",t:"num"},
+     {k:"site",l:"مقصد یا معدن",t:"text",dl:"sites"},
+     {k:"km",l:"کیلومتر فعلی",t:"num"}]},
+ rfault:{t:"اعلام خرابی",ic:"🛠",lag:1,multi:1,mine:1,
+   hint:"هر خرابی یک برگه",
+   meta:[],
+   prefill:()=>[{m:(myMachList()[0]||{}).code||(myMachList()[0]||{}).name||""}],
+   rowLabel:r=>{ const m=tdMach(r.m,MYV); return (m?esc(m.name):"دستگاه")+(r.desc?" — "+esc(String(r.desc).slice(0,25)):""); },
+   cols:[{k:"m",l:"دستگاه",t:"mach:میکسر,کمپرسی,کمپرسی تریلی"},
+     {k:"desc",l:"شرح خرابی",t:"area"},
+     {k:"sleep",l:"ماشین خوابید؟",t:"sel",o:["خیر","بله"]},
+     {k:"alka",l:"شماره ارجاع آلکا (اگر داری)",t:"text"}]},
+ rstop:{t:"اعلام توقف",ic:"⏸",lag:1,multi:1,mine:1,
+   hint:"ساعت یا مدت، هرکدام را می‌دانی",
+   meta:[],
+   prefill:()=>[{m:(myMachList()[0]||{}).code||(myMachList()[0]||{}).name||""}],
+   rowLabel:r=>{ const m=tdMach(r.m,MYV); return (m?esc(m.name):"دستگاه")+(r.cause?" — "+esc(r.cause):""); },
+   cols:[{k:"m",l:"دستگاه",t:"mach:میکسر,کمپرسی,کمپرسی تریلی"},
+     {k:"fromT",l:"از ساعت",t:"time"},{k:"toT",l:"تا ساعت",t:"time"},
+     {k:"min",l:"یا مدت (دقیقه)",t:"num"},
+     {k:"cause",l:"علت",t:"sel",o:DCAUSES}]},
+ rfuel:{t:"سوخت‌گیری",ic:"⛽",lag:1,multi:1,mine:1,
+   hint:"هر سوخت‌گیری یک برگه",
+   meta:[],
+   prefill:()=>[{m:(myMachList()[0]||{}).code||(myMachList()[0]||{}).name||""}],
+   rowLabel:r=>{ const m=tdMach(r.m,MYV); return (m?esc(m.name):"دستگاه")+(r.lit?" — "+fa(tdN(r.lit))+" لیتر":""); },
+   cols:[{k:"m",l:"دستگاه",t:"mach:میکسر,کمپرسی,کمپرسی تریلی"},
+     {k:"lit",l:"لیتر",t:"num"},
+     {k:"stat",l:"جایگاه",t:"text",dl:"stations"},
+     {k:"km",l:"کیلومتر فعلی",t:"num"}]},
+ /* --- فرم‌های شخصی قبلی: برای برگه‌هایی که از قبل ثبت شده‌اند می‌مانند --- */
  drep:{t:"گزارش روزانه‌ی من (کمپرسی / تریلی)",ic:"📝",lag:1,multi:0,mine:1,
    hint:"فقط کارکرد امروز خودت؛ هزینه و تناژ لازم نیست",
    meta:[{k:"shift",l:"دوره",t:"sel",o:["۲۴ ساعت","شیفت روز","شیفت شب"]}],
@@ -4737,7 +4779,7 @@ const SK={
    meta:[],
    cols:[{k:"m",l:"دستگاه",t:"mach"},{k:"exp",l:"اعتبار تا",t:"jd"},{k:"note",l:"توضیح",t:"text"}]}
 };
-const SK_ORDER=["mplant","mmach","mprod","mpump","mstaff","haul","dump","project","batch","silo","fault","fuelcard","wash","yard","waste","attend","leave","imix","ipump","ibatch","saye","drep","orep","mrep"];
+const SK_ORDER=["mplant","mmach","mprod","mpump","mstaff","haul","dump","project","batch","silo","fault","fuelcard","wash","yard","waste","attend","leave","imix","ipump","ibatch","saye","rwork","rfault","rstop","rfuel","drep","orep","mrep"];
 /* کاشی‌های فرم شخصی در صفحه‌ی «امروز» ادمین نمی‌آیند؛ جای خودشان تب «گزارش من» است */
 const SK_TODAY=SK_ORDER.filter(k=>!SK[k].mine);
 if(typeof DOCS!=="undefined"&&!DOCS.some(d=>d[0]==="sayeDue")) DOCS.push(["sayeDue","مجوز سامانه سایه"]);
@@ -4810,6 +4852,49 @@ const DERIVE={
      if(nrm>0&&n<nrm&&!isFri(d)&&r.cause!=="جمعه / تعطیل")
        out.scores.push({id:`sh_${sh.id}_sf${i}`,kind:"shortfall",date:d,machineId:m.id,contactId:c?c.id:"",driver:drv,norm:nrm,done:n,
          cause:r.cause||"",minus:sfMinus(r.cause||"")?1:0,fromT:"",toT:"",min:0,notes:r.note||"از فرم عملکرد"}); });
+   return out; },
+ /* --- چهار فرم ساده --- */
+ /* کارکرد: نوع دستگاه تعیین می‌کند سرویس «بتن» است یا «مصالح» و رکورد در
+    کدام بخش می‌نشیند. متراژ فقط برای میکسر معنی دارد و بین سرویس‌ها پخش می‌شود. */
+ rwork(sh){ const d=sh.date, out={trips:[],log:[],scores:[]};
+   sh.rows.forEach((r,i)=>{ const m=tdMach(r.m,MYV); if(!m) return;
+     const mix=m.type==="میکسر", sec=mix?"mixer":"dump";
+     const n=Math.round(tdN(r.n)), drv=tdDriverOf(m)||sh.byName||"";
+     const vol=tdN(r.m3), per=(mix&&n>0&&vol>0)?+(vol/n).toFixed(2):0;
+     for(let k=0;k<n;k++) out.trips.push({id:`sh_${sh.id}_t${i}_${k}`,date:d,machineId:m.id,driver:drv,site:r.site||"",
+       kind:mix?"بتن":"مصالح",material:"",tons:0,volume:per,stage:4,src:"sheet",sec});
+     const km=tdN(r.km);
+     if(km>0) out.log.push({id:`sh_${sh.id}_k${i}`,machineId:m.id,date:d,title:"اعلام کیلومتر از گزارش راننده",kind:"km",usage:km,cost:0,sec,notes:""});
+     /* کسری کارکرد ثبت می‌شود ولی بدون علت و بدون امتیاز منفی:
+        راننده علت کم‌کاری خودش را تعیین نمی‌کند، سرپرست بعداً مشخص می‌کند. */
+     const nrm=normOf(m);
+     if(nrm>0&&n<nrm&&!isFri(d))
+       out.scores.push({id:`sh_${sh.id}_sf${i}`,kind:"shortfall",date:d,machineId:m.id,
+         contactId:(S.users.find(u=>u.id===sh.by)||{}).cid||"",driver:drv,norm:nrm,done:n,cause:"",minus:0,
+         fromT:"",toT:"",min:0,notes:"از فرم ساده‌ی راننده — علت تعیین نشده"}); });
+   return out; },
+ rfault(sh){ const d=sh.date, out={faults:[]};
+   sh.rows.forEach((r,i)=>{ const m=tdMach(r.m,MYV); if(!m||!String(r.desc||"").trim()) return;
+     const slp=r.sleep==="بله";
+     out.faults.push({id:`sh_${sh.id}_f${i}`,machineId:m.id,title:String(r.desc).slice(0,60),date:d,cause:"سایر",
+       stopped:slp,downH:0,cost:0,notes:String(r.desc)+(r.alka?`\nارجاع آلکا: ${r.alka}`:"")+"\n(اعلام راننده)",
+       photos:[],status:"open",sleep:slp,alka:r.alka||"",sec:secByType(m.type),src:"sheet"}); });
+   return out; },
+ rstop(sh){ const d=sh.date, out={stops:[]};
+   sh.rows.forEach((r,i)=>{ const m=tdMach(r.m,MYV); if(!m) return;
+     let min=Math.round(tdN(r.min));
+     if(!(min>0)&&r.fromT&&r.toT){ const a=hhmmTs(d,r.fromT), b=hhmmTs(d,r.toT);
+       if(a&&b&&b>a) min=Math.round((b-a)/60000); }
+     if(!(min>0)) return;
+     out.stops.push({id:`sh_${sh.id}_s${i}`,date:d,min,cat:r.cause||"سایر",machineId:m.id,cost:0,
+       fromT:r.fromT||"",toT:r.toT||"",sec:secByType(m.type),notes:(r.cause?r.cause+" — ":"")+"اعلام راننده"}); });
+   return out; },
+ rfuel(sh){ const d=sh.date, out={fuel:[]};
+   sh.rows.forEach((r,i)=>{ const m=tdMach(r.m,MYV); if(!m) return;
+     const lit=tdN(r.lit); if(!(lit>0)) return;
+     out.fuel.push({id:`sh_${sh.id}_u${i}`,machineId:m.id,date:d,liters:lit,usage:tdN(r.km)||mUsage(m),cost:0,
+       station:r.stat||"",min:0,fromT:"",toT:"",src:"sheet",driver:tdDriverOf(m)||sh.byName||"",
+       sec:secByType(m.type),notes:"اعلام راننده"}); });
    return out; },
  /* گزارش شخصی راننده: همان رکوردهایی که فرم کامل می‌سازد، بدون هزینه و تناژ
     (راننده این دو را نمی‌داند؛ عدد نادرست بدتر از نبودن عدد است) */
@@ -4958,6 +5043,16 @@ function shSum(sh){ const R=sh.rows||[], M=sh.meta||{};
    case "mprod": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.op||r.mc).length)} ردیف • ${fa(sumBy(R,r=>tdN(r.m3)))} م³`;
    case "mpump": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.p||r.prj).length)} پروژه • ${fa(sumBy(R,r=>tdN(r.m3)))} م³`;
    case "mstaff": return `${ymLabel(ymNorm((sh.meta||{}).ym))} • ${fa(R.filter(r=>r.c).length)} نفر`;
+   case "rwork": { const r=R[0]||{}, m=tdMach(r.m,MYV), n=tdN(r.n), v=tdN(r.m3);
+     return `${m?esc(m.name):"دستگاه؟"} • ${fa(n)} سرویس${v?` • ${fa(v)} م³`:""}${r.site?` • ${esc(r.site)}`:""}`; }
+   case "rfault": return R.filter(r=>String(r.desc||"").trim()).map(r=>{ const m=tdMach(r.m,MYV);
+     return `${m?esc(m.name):"دستگاه؟"} — ${esc(String(r.desc).slice(0,40))}${r.sleep==="بله"?" (خوابید)":""}`; }).join(" • ")||"بدون شرح";
+   case "rstop": return R.map(r=>{ const m=tdMach(r.m,MYV); let mn=Math.round(tdN(r.min));
+     if(!(mn>0)&&r.fromT&&r.toT){ const a=hhmmTs(sh.date,r.fromT), b=hhmmTs(sh.date,r.toT); if(a&&b&&b>a) mn=Math.round((b-a)/60000); }
+     const t=r.fromT&&r.toT?` (${faNum(r.fromT)} تا ${faNum(r.toT)})`:"";
+     return `${m?esc(m.name):"دستگاه؟"} — ${mn>0?fa(mn)+" دقیقه"+t:"بدون مدت"}${r.cause?" • "+esc(r.cause):""}`; }).join(" • ")||"—";
+   case "rfuel": return R.filter(r=>tdN(r.lit)>0).map(r=>{ const m=tdMach(r.m,MYV);
+     return `${m?esc(m.name):"دستگاه؟"} — ${fa(tdN(r.lit))} لیتر${r.stat?" ("+esc(r.stat)+")":""}`; }).join(" • ")||"—";
    case "mrep": { const r=R[0]||{}, m=tdMach(r.m,["میکسر"]), n=tdN(r.n), v=tdN(r.m3), sm=tdN(r.smin);
      return `${m?esc(m.name):"میکسر؟"} • ${fa(n)} سرویس${v?` • ${fa(v)} م³`:""}${sm?` • ${fa(sm)} دقیقه توقف`:""}`; }
    case "drep": { const r=R[0]||{}, m=tdMach(r.m,HAULT), n=tdN(r.n), l=tdN(r.lit), sm=tdN(r.smin);
@@ -5559,28 +5654,40 @@ document.addEventListener("click",e=>{
       <button class="ghost" data-jdclose="1" style="width:100%">بستن</button></div></div>`); });
 
 /* ---------- گزارش من (راننده و اوپراتور) ---------- */
-function myKind(){ const f=RLU().forms; return (f!=="*"&&f.length)?f[0]:"drep"; }
-function mySheets(){ const k=myKind(); return S.sheets.filter(x=>x.kind===k&&x.by===meId()).sort((a,b)=>b.date<a.date?-1:1); }
+function myForms(){ const f=RLU().forms; return (f!=="*"&&f.length)?f:RFORMS; }
+function myKind(){ return myForms()[0]; }
+function mySheets(k){ const F=k?[k]:myForms();
+  return S.sheets.filter(x=>F.indexOf(x.kind)>=0&&x.by===meId()).sort((a,b)=>b.date<a.date?-1:1); }
 function vMy(){
-  const k=myKind(), K=SK[k], T=todayISO(), Y=addDays(T,-1);
-  const L=mySheets(), mine=myMachList();
-  const dayHas=d=>L.some(x=>x.date===d);
-  const st0=startISO();
-  const row=(d,lbl)=>{ const sh=L.find(x=>x.date===d), early=st0&&d<st0;
-    return `<button class="tdt ${sh?"ok":early?"pre":"miss"}" data-td="${sh?"edit":"new"}" ${sh?`data-id="${sh.id}"`:`data-k="${k}" data-d="${d}"`}>
+  const F=myForms(), T=todayISO(), Y=addDays(T,-1), mine=myMachList(), st0=startISO();
+  const has=(k,d)=>S.sheets.filter(x=>x.kind===k&&x.by===meId()&&x.date===d);
+  /* کارکرد: یک برگه در روز */
+  const wk=F.indexOf("rwork")>=0?"rwork":F[0], K=SK[wk];
+  const row=(d,lbl)=>{ const sh=has(wk,d)[0], early=st0&&d<st0;
+    return `<button class="tdt ${sh?"ok":early?"pre":"miss"}" data-td="${sh?"edit":"new"}" ${sh?`data-id="${sh.id}"`:`data-k="${wk}" data-d="${d}"`}>
       <span class="ic">${K.ic}</span><span class="tx"><b>${lbl} — ${jal(d)}</b><small>${sh?shSum(sh):early?"پیش از مبدأ ثبت کامل":"ثبت نشده"}</small></span>
       <span class="tag ${sh?"ok":early?"":"due"}">${sh?"ویرایش":early?"—":"ثبت کن"}</span></button>`; };
-  const old=L.filter(x=>x.date!==T&&x.date!==Y).slice(0,14);
+  /* سه گزارش موردی: هر بار یک برگه‌ی تازه */
+  const ev=F.filter(k=>k!==wk&&SK[k]).map(k=>{ const K2=SK[k], n=has(k,T).length;
+    return `<button class="tdt ${n?"ok":""}" data-td="new" data-k="${k}" data-d="${T}">
+      <span class="ic">${K2.ic}</span><span class="tx"><b>${K2.t}</b><small>${n?`${fa(n)} مورد امروز ثبت شده`:"برای ثبت بزن"}</small></span>
+      <span class="tag ${n?"ok":""}">＋ ثبت</span></button>`; }).join("");
+  const todayAll=mySheets().filter(x=>x.date===T||x.date===Y);
+  const old=mySheets().filter(x=>x.date!==T&&x.date!==Y).slice(0,12);
+  const line=x=>`<button class="tdt ok" data-td="edit" data-id="${x.id}"><span class="ic">${(SK[x.kind]||{}).ic||"📝"}</span>
+      <span class="tx"><b>${esc((SK[x.kind]||{}).t||x.kind)} — ${jal(x.date)}</b><small>${shSum(x)}</small></span><span class="tag">ویرایش</span></button>`;
   return `<div class="card" style="border-inline-start:4px solid ${tabC("my")}">
       <h3>${esc(meName())}</h3>
-      <div class="m">${esc(urName(ME?ME.role:""))}${mine.length?" • "+mine.map(m=>esc(m.name)).join("، "):(ME&&ME.role==="driver"?" • دستگاهی برای شما ثبت نشده؛ از سرپرست بخواه":"")}</div>
+      <div class="m">${esc(urName(ME?ME.role:""))}${mine.length?" • "+mine.map(m=>esc(m.name)).join("، "):(ME&&ME.role==="driver"||ME&&ME.role==="mixdriver"?" • دستگاهی برای شما ثبت نشده؛ از سرپرست بخواه":"")}</div>
       ${ME&&ME.role==="operator"&&ME.plant?`<div class="m">دستگاه بچینگ: ${esc(ME.plant)}</div>`:""}
       <div class="note" style="margin-top:8px">فقط گزارش خودت را می‌بینی و ثبت می‌کنی. هر ویرایش با نام و ساعت ثبت می‌شود.</div>
     </div>
-    <div class="card"><h3>گزارش روزانه</h3><div class="tdgrid">${row(Y,"دیروز")}${row(T,"امروز")}</div>
-      ${!dayHas(Y)&&!(st0&&Y<st0)?`<div class="note" style="margin-top:8px;color:var(--due)">گزارش دیروز هنوز ثبت نشده است.</div>`:""}</div>
-    ${old.length?`<div class="card"><h3>گزارش‌های قبلی</h3><div class="tdgrid">${old.map(x=>
-      `<button class="tdt ok" data-td="edit" data-id="${x.id}"><span class="ic">${K.ic}</span><span class="tx"><b>${jal(x.date)}</b><small>${shSum(x)}</small></span><span class="tag">ویرایش</span></button>`).join("")}</div></div>`:""}
+    <div class="card"><h3>کارکرد روزانه</h3><div class="tdgrid">${row(Y,"دیروز")}${row(T,"امروز")}</div>
+      ${!has(wk,Y).length&&!(st0&&Y<st0)?`<div class="note" style="margin-top:8px;color:var(--due)">کارکرد دیروز هنوز ثبت نشده است.</div>`:""}</div>
+    ${ev?`<div class="card"><h3>اعلام‌های موردی</h3><div class="tdgrid">${ev}</div>
+      <div class="note" style="margin-top:8px">هر بار که پیش آمد بزن؛ لازم نیست منتظر آخر روز بمانی.</div></div>`:""}
+    ${todayAll.length?`<div class="card"><h3>ثبت‌های امروز و دیروز</h3><div class="tdgrid">${todayAll.map(line).join("")}</div></div>`:""}
+    ${old.length?`<div class="card"><h3>گزارش‌های قبلی</h3><div class="tdgrid">${old.map(line).join("")}</div></div>`:""}
     <div class="card"><h3>حساب من</h3><div class="row"><button class="ghost" data-um="mypw">تغییر رمز من</button><button class="ghost" data-um="logout">خروج از حساب</button></div></div>`; }
 
 function vToday(){ const T=tdDay||todayISO(), Y=addDays(T,-1);
