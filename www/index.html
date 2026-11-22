@@ -53,6 +53,12 @@ header{
   border-radius:10px;padding:6px 10px;font-family:inherit;font-size:13px;cursor:pointer}
 nav{display:flex;gap:6px;overflow-x:auto;padding:0 10px 10px;scrollbar-width:none}
 nav::-webkit-scrollbar{display:none}
+/* پنجره‌ی پهن (ویندوز): تب‌ها به‌جای بیرون زدن از کادر، در چند ردیف می‌شکنند
+   و سر‌برگ با ستون محتوا (۹۰۰ پیکسل) هم‌تراز می‌شود. */
+@media(min-width:760px){
+  nav{flex-wrap:wrap;overflow-x:visible;max-width:900px;margin:0 auto;padding:0 12px 10px}
+  .head-row{max-width:900px;margin:0 auto}
+}
 nav button{
   flex:none;background:var(--surface2);border:1px solid var(--line);color:var(--muted);
   border-radius:999px;padding:7px 13px;font-family:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
@@ -237,7 +243,7 @@ const tabC=t=>TAB_C[t||tab]||"#1f6feb";
 let tab = (location.hash||"#today").slice(1);
 if(!TABS.some(t=>t[0]===tab)) tab="today";
 
-const APP_BUILD="1.0.19";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
+const APP_BUILD="1.0.20";   // نسخه‌ی اپ؛ همین عدد روی APK هم می‌نشیند (patch-android.js)
 const COLS=["sheets","avail","machines","tasks","prod","ideas","check","ticks","rem","faults","log","trips","fuel","tires","stops","mixes","batches","calib","counts","receipts","reports","incidents","looks","notes","contacts","sms","att","washes","jobs","pumpjobs","norms","scores","parts","returns","opprod","silos","smsSeg","cases","verif","aiLog","lex","pdocs","msum","users","ulog","tcheck"];
 const S={sheets:[],avail:[],machines:[],tasks:[],prod:[],ideas:[],check:[],ticks:[],rem:[],faults:[],log:[],trips:[],fuel:[],tires:[],stops:[],mixes:[],batches:[],calib:[],counts:[],receipts:[],reports:[],incidents:[],looks:[],notes:[],contacts:[],sms:[],att:[],washes:[],jobs:[],pumpjobs:[],norms:[],scores:[],parts:[],returns:[],opprod:[],silos:[],smsSeg:[],cases:[],verif:[],aiLog:[],lex:[],pdocs:[],msum:[],users:[],ulog:[],tcheck:[]};
 let DB=null, SAMPLE=null, ready=false;
@@ -251,6 +257,26 @@ const localISO=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"
 const todayISO=()=>localISO(new Date());
 const toEn=s=>String(s==null?"":s).replace(/[۰-۹]/g,d=>"۰۱۲۳۴۵۶۷۸۹".indexOf(d)).replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d));
 const gv=n=>{const el=document.getElementById(n);return el?el.value.trim():""};
+
+/* ---------- نرمال‌سازی ورودی‌های عددی ----------
+   کادرهای عددی از نوع text هستند، نه number. دلیل: روی ویندوز (و هر دستگاه با
+   چیدمان کلید فارسی) ارقام فارسی «۱۲۳» تایپ می‌شود و مرورگر آنها را در
+   type="number" بی‌صدا دور می‌اندازد، یعنی کاربر تایپ می‌کند و هیچ چیز نوشته
+   نمی‌شود. اینجا هم‌زمان با تایپ، ارقام فارسی و عربی به لاتین تبدیل و
+   کاراکترهای نامعتبر حذف می‌شوند تا همه‌ی خواندن‌های بعدی عدد درست بگیرند. */
+document.addEventListener("input",e=>{
+  const el=e.target; if(!el||el.tagName!=="INPUT") return;
+  const im=el.getAttribute("inputmode"); if(im!=="numeric"&&im!=="decimal"&&im!=="tel") return;
+  const v0=el.value;
+  let v=toEn(v0).replace(/[٫٬،]/g,im==="decimal"?".":"");
+  v = im==="decimal" ? v.replace(/[^0-9.\-]/g,"")
+    : im==="tel"     ? v.replace(/[^0-9+\-]/g,"")
+    :                  v.replace(/[^0-9\-]/g,"");
+  if(im==="decimal"){ const i=v.indexOf("."); if(i>=0) v=v.slice(0,i+1)+v.slice(i+1).replace(/\./g,""); }
+  v=v.charAt(0)+v.slice(1).replace(/[-+]/g,"");
+  if(v!==v0){ const p=el.selectionStart==null?v.length:el.selectionStart, d=v0.length-v.length;
+    el.value=v; try{ const c=Math.max(0,p-d); el.setSelectionRange(c,c); }catch(_){} }
+},true);
 
 /* ---------- تقویم شمسی ---------- */
 const JM=["فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند"];
@@ -590,7 +616,7 @@ function machineForm(m){ m=m||{};
   <div><label>سال ساخت</label><input id="my" inputmode="numeric" value="${esc(m.year||"")}"></div>
   <div><label>راننده / اپراتور</label><input id="mdr" value="${esc(m.driver||"")}"></div>
   <div><label>واحد کارکرد</label><select id="mu"><option value="h" ${m.unit!=="km"?"selected":""}>ساعت</option><option value="km" ${m.unit==="km"?"selected":""}>کیلومتر</option></select></div>
-  <div><label>کارکرد فعلی</label><input id="mh" type="number" inputmode="numeric" value="${m.id?mUsage(m):""}"></div>
+  <div><label>کارکرد فعلی</label><input id="mh" type="text" inputmode="numeric" value="${m.id?mUsage(m):""}"></div>
   <div><label>سررسید بیمه</label>${jdate("mins",m.insDue||"")}</div>
   <div><label>سررسید معاینه فنی</label>${jdate("minsp",m.inspDue||"")}</div>
   <div><label>اعتبار گواهی‌نامه راننده</label>${jdate("mlic",m.licDue||"")}</div></div>
@@ -603,7 +629,7 @@ function faultForm(mid){ if(!S.machines.length) return '<div class="empty">اب�
   <div class="grid2"><div><label>تاریخ</label>${jdate("fd",todayISO())}</div>
   <div><label>نوع</label><select id="fc">${FAULT_CAUSES.map(x=>`<option>${x}</option>`).join("")}</select></div>
   <div><label>وضعیت دستگاه</label><select id="fs"><option value="run">در حال کار</option><option value="stop">متوقف شد</option></select></div>
-  <div><label>هزینه تخمینی (تومان)</label><input id="fcost" type="number" inputmode="numeric"></div></div>
+  <div><label>هزینه تخمینی (تومان)</label><input id="fcost" type="text" inputmode="numeric"></div></div>
   <label>عکس (حداکثر ۴)</label><input id="fp" type="file" accept="image/*" multiple>
   <label>توضیح</label><textarea id="fn" placeholder="علت، قطعه لازم، اقدام انجام‌شده"></textarea>
   <div class="row" style="margin-top:9px"><button class="primary" id="addF">ثبت خرابی</button></div>`;}
@@ -668,7 +694,7 @@ function vMachDetail(m){
     <div class="kpi"><div class="n">${fa(fs.length)}</div><div class="l">خرابی ثبت‌شده</div></div>
     <div class="kpi"><div class="n">${fa(S.trips.filter(x=>x.machineId===m.id&&x.date>=addDays(todayISO(),-29)).length)}</div><div class="l">سرویس ۳۰ روز</div></div>
     <div class="kpi"><div class="n">${fa(Math.round(cost/1e5)/10)}</div><div class="l">هزینه (میلیون تومان)</div></div></div>
-   <div class="grid2"><div><label>کارکرد جدید (${unitName(m)})</label><input id="mu2" type="number" inputmode="numeric" value="${mUsage(m)}"></div>
+   <div class="grid2"><div><label>کارکرد جدید (${unitName(m)})</label><input id="mu2" type="text" inputmode="numeric" value="${mUsage(m)}"></div>
    <div style="align-self:end"><button class="primary" data-setu="${m.id}" style="width:100%">به‌روزرسانی</button></div></div>
    <hr><div class="m">بیمه: ${jal(m.insDue)} • معاینه فنی: ${jal(m.inspDue)} • گواهی‌نامه: ${jal(m.licDue)}</div>
    ${m.notes?`<div class="m">${esc(m.notes)}</div>`:""}
@@ -845,14 +871,14 @@ function gpsCard(day){ const t=todayISO(), url=gpsUrl(), cf=LS.get("gpsCfg",{})|
     <div class="row" style="margin-top:8px"><button class="primary" id="saveGps">ذخیره و آزمایش</button></div>
     <div class="note">رمز پنل ردیاب فقط روی سرور است. اپ با همان «رمز اپ» بخش تنظیمات به این سرویس وصل می‌شود.</div>
     ${gps.st?`<div class="grid2" style="margin-top:8px"><div><label>عرض جغرافیایی کارخانه</label><input id="gpla" dir="ltr" value="${gps.st.plant.lat}"></div><div><label>طول جغرافیایی</label><input id="gplo" dir="ltr" value="${gps.st.plant.lon}"></div>
-     <div><label>شعاع محدوده (متر)</label><input id="gplr" type="number" inputmode="numeric" value="${gps.st.plant.r}"></div><div style="align-self:end"><button class="ghost" id="savePlant" style="width:100%">ذخیره محدوده</button></div></div>
+     <div><label>شعاع محدوده (متر)</label><input id="gplr" type="text" inputmode="numeric" value="${gps.st.plant.r}"></div><div style="align-self:end"><button class="ghost" id="savePlant" style="width:100%">ذخیره محدوده</button></div></div>
      <div class="note">خروج از این دایره و برگشت به آن یک سرویس حساب می‌شود.</div>
      <h3 style="margin-top:12px">معدن، جایگاه سوخت و پروژه‌ها</h3>
      ${(gps.st.zones||[]).length?(gps.st.zones||[]).map(q=>`<div class="item"><div class="t">${esc(q.name)}<span class="tag">${ZKIND[q.kind]||q.kind}</span></div><div class="m" dir="ltr" style="text-align:right">${q.lat}, ${q.lon} • ${fa(q.r)} m</div>
        <div class="row" style="margin-top:6px"><button class="danger" data-zdel="${esc(q.id)}">حذف</button></div></div>`).join(""):'<div class="m">هنوز محدوده‌ای تعریف نشده. تا وقتی معدن تعریف نشود، هر خروج و برگشت کمپرسی یک سرویس حساب می‌شود.</div>'}
      <div class="grid2" style="margin-top:8px"><div><label>نام محدوده</label><input id="zn" placeholder="مثلاً معدن شماره ۱"></div><div><label>نوع</label><select id="zk"><option value="mine">معدن</option><option value="fuel">جایگاه سوخت</option><option value="site">پروژه</option></select></div>
       <div><label>عرض جغرافیایی</label><input id="zla" dir="ltr"></div><div><label>طول جغرافیایی</label><input id="zlo" dir="ltr"></div>
-      <div><label>شعاع (متر)</label><input id="zr" type="number" inputmode="numeric" value="400"></div><div style="align-self:end"><button class="primary" id="addZone" style="width:100%">افزودن محدوده</button></div></div>
+      <div><label>شعاع (متر)</label><input id="zr" type="text" inputmode="numeric" value="400"></div><div style="align-self:end"><button class="primary" id="addZone" style="width:100%">افزودن محدوده</button></div></div>
      <div class="row" style="margin-top:8px"><button class="ghost" id="gpsStopsBtn">پیدا کردن توقف‌گاه‌های پرتکرار</button></div>
      ${gps.stops?(gps.stops.length?gps.stops.map(o=>`<div class="item"><div class="t">${fa(o.n)} توقف${o.haul?` • ${fa(o.haul)} بار کمپرسی`:""} • میانگین ${fa(o.min)} دقیقه</div><div class="m" dir="ltr" style="text-align:right">${o.la}, ${o.lo}</div>
        <div class="row" style="margin-top:6px"><a class="chip" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${o.la},${o.lo}">نقشه</a><button class="ghost" data-zsug="${o.la}|${o.lo}|mine">معدن است</button><button class="ghost" data-zsug="${o.la}|${o.lo}|fuel">جایگاه سوخت است</button></div></div>`).join(""):'<div class="m">در ۱۴ روز اخیر توقف طولانی‌ای بیرون از کارخانه ثبت نشده.</div>'):""}
@@ -902,7 +928,7 @@ function sfCard(day){
     :'<div class="empty">همه‌ی دستگاه‌های نُرم‌دار امروز به نُرم رسیده‌اند.</div>'}
    <div class="note" style="margin-top:6px">ساعت کارکرد فقط برای همین دستگاه‌ها پرسیده می‌شود؛ تا وقتی ماشین به نُرم برسد هیچ ساعتی لازم نیست.</div>
    <details style="margin-top:8px"><summary>نُرم روزانه‌ی هر نوع ماشین</summary>
-    <div class="grid2">${types.map(ty=>`<div><label>${esc(ty)}</label><input id="nrm_${esc(ty).replace(/\s+/g,"_")}" type="number" inputmode="numeric" value="${(S.norms.find(n=>!n.machineId&&n.type===ty)||{}).n??(NORM_DEF[ty]||"")}"></div>`).join("")}</div>
+    <div class="grid2">${types.map(ty=>`<div><label>${esc(ty)}</label><input id="nrm_${esc(ty).replace(/\s+/g,"_")}" type="text" inputmode="numeric" value="${(S.norms.find(n=>!n.machineId&&n.type===ty)||{}).n??(NORM_DEF[ty]||"")}"></div>`).join("")}</div>
     <div class="row" style="margin-top:8px"><button class="primary" id="saveNorms">ذخیره نُرم‌ها</button></div>
     <div class="note">صفر یعنی این نوع ماشین معیار سرویس ندارد و در کسری دیده نمی‌شود.</div></details>
   </div>`;}
@@ -915,7 +941,7 @@ function sfModal(mid,day){
    <label>علت</label><select id="sfc">${SF_CAUSES.map(c=>`<option ${c===g?"selected":""}>${c}</option>`).join("")}</select>
    <div class="grid2"><div><label>ساعت شروع کار</label><input id="sff" type="time" value="${r.fromT||""}"></div>
    <div><label>ساعت پایان کار</label><input id="sft" type="time" value="${r.toT||""}"></div>
-   <div><label>معطلی (دقیقه)</label><input id="sfm" type="number" inputmode="numeric" value="${r.min||""}"></div></div>
+   <div><label>معطلی (دقیقه)</label><input id="sfm" type="text" inputmode="numeric" value="${r.min||""}"></div></div>
    <label>توضیح</label><textarea id="sfn">${esc(r.notes||"")}</textarea>
    <div class="note">«کم‌کاری راننده» امتیاز منفی ثبت می‌کند و در کارنامه‌ی راننده دیده می‌شود؛ بقیه‌ی علت‌ها موجه‌اند.</div>
    <div class="row" style="margin-top:9px"><button class="primary" data-sfsave="${mid}|${day}">ذخیره</button><button class="ghost" data-jdclose="1">انصراف</button></div>`);}
@@ -957,7 +983,7 @@ function vFleet(){
      <td><button class="ghost" data-tripedit="${x.id}">ویرایش</button></td></tr>`}).join("")}</table></div>`:'<div class="empty">سرویسی ثبت نشده.</div>'}
    <div class="note" style="margin-top:6px">زمان‌ها به دقیقه. رفت: حرکت تا رسیدن • تخلیه: رسیدن تا پایان تخلیه • برگشت: پایان تخلیه تا کارگاه.</div>
    <details style="margin-top:8px"><summary>زمان استاندارد سیکل</summary>
-    <div class="grid2"><div><label>دقیقه</label><input id="cstd" type="number" inputmode="numeric" value="${cycleStd()}"></div>
+    <div class="grid2"><div><label>دقیقه</label><input id="cstd" type="text" inputmode="numeric" value="${cycleStd()}"></div>
     <div style="align-self:end"><button class="primary" id="saveStd" style="width:100%">ذخیره</button></div></div></details>
   </div>
   <div class="card"><h3>تعداد سرویس روزانه (۱۴ روز)</h3>${chart("bar",last14.map(d=>jal(d).split(" ")[0]),last14.map(d=>S.trips.filter(x=>x.date===d).length),"var(--brand)")}</div>
@@ -973,10 +999,10 @@ function vFleet(){
    ${abn.length?`<div class="note" style="color:var(--bad)">${fa(abn.length)} سوخت‌گیری با مصرف غیرعادی در ۳۰ روز اخیر</div>`:""}
    <details><summary>ثبت سوخت‌گیری</summary>
     ${S.machines.length?`<label>دستگاه</label><select id="fum">${S.machines.map(m=>`<option value="${m.id}">${esc(m.name)} (${fa(mUsage(m))} ${unitName(m)})</option>`).join("")}</select>
-    <div class="grid2"><div><label>تاریخ</label>${jdate("fud",t)}</div><div><label>لیتر</label><input id="ful" type="number" inputmode="decimal"></div>
-    <div><label>کارکرد هنگام سوخت‌گیری</label><input id="fuu" type="number" inputmode="numeric" placeholder="کیلومتر یا ساعت"></div>
-    <div><label>مبلغ (تومان)</label><input id="fuc" type="number" inputmode="numeric"></div>
-    <div><label>مدت سوخت‌گیری (دقیقه)</label><input id="fumn" type="number" inputmode="numeric" placeholder="روی توقف دستگاه حساب می‌شود"></div>
+    <div class="grid2"><div><label>تاریخ</label>${jdate("fud",t)}</div><div><label>لیتر</label><input id="ful" type="text" inputmode="decimal"></div>
+    <div><label>کارکرد هنگام سوخت‌گیری</label><input id="fuu" type="text" inputmode="numeric" placeholder="کیلومتر یا ساعت"></div>
+    <div><label>مبلغ (تومان)</label><input id="fuc" type="text" inputmode="numeric"></div>
+    <div><label>مدت سوخت‌گیری (دقیقه)</label><input id="fumn" type="text" inputmode="numeric" placeholder="روی توقف دستگاه حساب می‌شود"></div>
     <div><label>از ساعت</label><input id="fuf" type="time"></div>
     <div><label>تا ساعت</label><input id="fut" type="time"></div></div>
     <div class="note">برای محاسبه درست مصرف، هر بار باک را پر کن و کارکرد را وارد کن.</div>
@@ -1009,7 +1035,7 @@ function tireCard(m){
     <div class="grid2"><div><label>موقعیت</label><input id="typ" list="tpos" placeholder="جلو چپ"><datalist id="tpos">${["جلو چپ","جلو راست","عقب چپ بیرونی","عقب چپ داخلی","عقب راست بیرونی","عقب راست داخلی","زاپاس"].map(x=>`<option value="${x}">`).join("")}</datalist></div>
     <div><label>برند / سایز</label><input id="tyb"></div>
     <div><label>سریال</label><input id="tys" dir="ltr"></div>
-    <div><label>کارکرد هنگام نصب</label><input id="tyu" type="number" inputmode="numeric" value="${mUsage(m)}"></div>
+    <div><label>کارکرد هنگام نصب</label><input id="tyu" type="text" inputmode="numeric" value="${mUsage(m)}"></div>
     <div><label>تاریخ نصب</label>${jdate("tyd",todayISO())}</div></div>
     <div class="row" style="margin-top:9px"><button class="primary" data-tireadd="${m.id}">ثبت</button></div></details>
    ${old.length?`<details><summary>تعویض‌شده‌ها (${fa(old.length)})</summary>${old.map(t=>`<div class="item"><div class="t">${esc(t.pos)} • ${esc(t.brand||"")}<span class="tag">${fa(life(t))} ${unitName(m)}</span></div>
@@ -1127,8 +1153,8 @@ function washExtra(){const R_=LS.get("washRot",{iv:7,cap:2,fri:true}), t=todayIS
    <div class="row" style="margin-top:8px"><button class="ghost" id="washAdd">ثبت شستشوی بدون نوبت</button><button class="ghost" data-gowash="1">گزارش عملکرد کارواش</button></div></div>
   <div class="card"><h3>نوبت‌دهی خودکار کارواش</h3>
    <div class="note">نوبت‌ها را طوری می‌چیند که هر روز بیش از ظرفیت، دستگاه به کارواش نرود و دستگاه‌هایی که دیرتر شسته شده‌اند جلوتر بیایند.</div>
-   <div class="grid2"><div><label>هر دستگاه هر چند روز</label><input id="wiv" type="number" inputmode="numeric" value="${R_.iv}"></div>
-   <div><label>حداکثر دستگاه در روز</label><input id="wcap" type="number" inputmode="numeric" value="${R_.cap}"></div></div>
+   <div class="grid2"><div><label>هر دستگاه هر چند روز</label><input id="wiv" type="text" inputmode="numeric" value="${R_.iv}"></div>
+   <div><label>حداکثر دستگاه در روز</label><input id="wcap" type="text" inputmode="numeric" value="${R_.cap}"></div></div>
    <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="wfri" type="checkbox" style="width:auto" ${R_.fri?"checked":""}> جمعه‌ها نوبت نده</label>
    <div class="row" style="margin-top:9px"><button class="primary" id="washRot">چیدن نوبت‌ها</button></div>
    ${next.length?`<hr><div class="t" style="font-weight:700;margin-bottom:4px">نوبت‌های ۱۴ روز آینده</div>${next.map(x=>`<div class="m"><b>${WEEK[new Date(x.d+"T12:00:00").getDay()]} ${jal(x.d)}:</b> ${x.ts.map(tk=>esc(mName(tk.machineId))).join("، ")}</div>`).join("")}`:""}</div>`;}
@@ -2002,7 +2028,7 @@ function smsItem(x){const st_=x.status==="new"?'<span class="tag soon">جدید<
    ${true?`<details><summary style="font-size:13px">${x.status==="new"?"اصلاح دسته‌بندی":"اصلاح مقادیر این پیام"}</summary><div class="grid2" style="margin-top:6px">
     <select data-smst="${x.id}">${Object.entries(SMS_T).map(([kk,v])=>`<option value="${kk}" ${x.type===kk?"selected":""}>${v}</option>`).join("")}</select>
     <select data-smsc="${x.id}"><option value="">علت —</option>${FSTOP.map(c=>`<option ${x.cause===c?"selected":""}>${c}</option>`).join("")}</select>
-    <input data-smsm="${x.id}" type="number" inputmode="numeric" placeholder="مدت (دقیقه)" value="${x.minutes||""}">
+    <input data-smsm="${x.id}" type="text" inputmode="numeric" placeholder="مدت (دقیقه)" value="${x.minutes||""}">
     <select data-smsmc="${x.id}"><option value="">دستگاه —</option>${S.machines.map(m=>`<option value="${m.id}" ${x.machineId===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select></div></details>`:""}
    <div class="row" style="margin-top:7px">${x.status==="new"&&k?`<button class="primary" data-sms2="${k}" data-sid="${x.id}">${SMS_BTN[k]}</button>`:""}
     ${x.status==="new"&&(x.type==="stop"||x.type==="fault")?`<button class="ghost" data-sms2="stop" data-sid="${x.id}">ثبت توقف تولید</button>`:""}
@@ -2029,8 +2055,8 @@ function vSms(){const P=SMSP(), t=todayISO(), a=smsAgg(addDays(t,-29),t), tot=su
    <label style="display:flex;gap:8px;align-items:center"><input id="smsNotify" type="checkbox" style="width:auto" ${LS.get("smsNotify",true)?"checked":""}> اعلان پیام پرسنل وقتی اپ بسته است</label>
    <label style="display:flex;gap:8px;align-items:center"><input id="segOn" type="checkbox" style="width:auto" ${SEG_ON()?"checked":""}> شکستن پیام به قطعه و جدا کردن تعارف و اصلاح</label>
    <div class="row" style="margin-top:8px"><button class="ghost" id="aiSeg">تحلیل قطعه‌های نامشخص با دستیار</button><button class="ghost" id="verAll">تطبیق با GPS</button></div>
-   <div class="grid2" style="margin-top:8px"><div><label>حد اطمینان برای ثبت خودکار (٪)</label><input id="segConf" type="number" inputmode="numeric" min="30" max="95" value="${+LS.get("segConf",60)}"></div>
-    <div><label>اختلاف زمانی مجاز با GPS (دقیقه)</label><input id="verTol" type="number" inputmode="numeric" min="5" max="180" value="${+LS.get("verTol",30)}"></div></div>
+   <div class="grid2" style="margin-top:8px"><div><label>حد اطمینان برای ثبت خودکار (٪)</label><input id="segConf" type="text" inputmode="numeric" min="30" max="95" value="${+LS.get("segConf",60)}"></div>
+    <div><label>اختلاف زمانی مجاز با GPS (دقیقه)</label><input id="verTol" type="text" inputmode="numeric" min="5" max="180" value="${+LS.get("verTol",30)}"></div></div>
    <div class="row" style="margin-top:8px"><button class="ghost" id="saveSeg">ذخیره آستانه‌ها</button></div>
    <div class="note" style="margin-top:6px">هر چیزی که زیر حد اطمینان باشد به «صف تأیید» می‌رود و در هیچ عدد و شاخصی شمرده نمی‌شود. اعداد همیشه از متن خود پیامک خوانده می‌شوند، نه از دستیار.</div>
    <div class="note" style="margin-top:6px">فقط پیامک شماره‌هایی که پایین ثبت کرده‌ای خوانده می‌شود و بقیه پیامک‌هایت وارد اپ نمی‌شوند. وقتی اپ باز است پیام‌ها خودکار وارد می‌شوند و وقتی بسته است، با باز کردن اپ.</div></div>
@@ -2288,8 +2314,8 @@ function vAtt(){const t=todayISO(), d=attDay||t, ds=staff(), j=isoToJ(t), mf=jTo
    ${ds.length?`<div class="row" style="margin:10px 0"><button class="ghost" id="attAll">همه حاضر (برای ثبت‌نشده‌ها)</button></div>
    ${ds.map(c=>{const r=rec(c)||{};return `<div class="attrow"><div class="t">${esc(c.name)} <span class="m" style="font-weight:400">${esc(roleOf(c))}${c.machineId?" • "+esc(mName(c.machineId)):""}</span></div>
     <div class="grid3"><select data-attst="${c.id}"><option value="">—</option>${ATT.map(x=>`<option ${r.status===x?"selected":""}>${x}</option>`).join("")}</select>
-    <input data-atth="${c.id}" type="number" inputmode="decimal" placeholder="ساعت تأخیر/مرخصی" value="${r.hours||""}">
-    <input data-atto="${c.id}" type="number" inputmode="decimal" placeholder="اضافه‌کار (ساعت)" value="${r.ot||""}"></div></div>`}).join("")}
+    <input data-atth="${c.id}" type="text" inputmode="decimal" placeholder="ساعت تأخیر/مرخصی" value="${r.hours||""}">
+    <input data-atto="${c.id}" type="text" inputmode="decimal" placeholder="اضافه‌کار (ساعت)" value="${r.ot||""}"></div></div>`}).join("")}
    <div class="note" style="margin-top:6px">ستون دوم برای ساعت تأخیر یا مرخصی ساعتی است و ستون سوم برای اضافه‌کار. تغییرها همان لحظه ذخیره می‌شوند.</div>`
    :'<div class="empty">ابتدا پرسنل را در بخش «رانندگان» یا «کارگران محوطه» ثبت کن.</div>'}</div>
   ${ds.length?`<div class="card"><h3>جمع ${JM[j.jm-1]}</h3><div class="scrollx"><table><tr><th>راننده</th><th>کارکرد</th><th>تأخیر</th><th>مرخصی</th><th>استعلاجی</th><th>غیبت</th><th>اضافه‌کار</th><th>مانده مرخصی سال</th></tr>
@@ -2297,7 +2323,7 @@ function vAtt(){const t=todayISO(), d=attDay||t, ds=staff(), j=isoToJ(t), mf=jTo
     <td style="${p.absent?"color:var(--bad);font-weight:700":""}">${fa(p.absent)}</td><td>${f1(p.ot)}</td><td style="${lb.left<3?"color:var(--bad)":""}">${fmtV(lb.left)}</td></tr>`}).join("")}</table></div>
    <div class="row" style="margin-top:8px"><button class="ghost" id="attCopy">کپی گزارش کارکرد ماه</button></div></div>`:""}
   <div class="card"><details><summary>تنظیمات</summary><div class="grid2">
-   <div><label>مرخصی استحقاقی سالانه (روز)</label><input id="lvd" type="number" inputmode="numeric" value="${LS.get("leaveDays",26)}"></div>
+   <div><label>مرخصی استحقاقی سالانه (روز)</label><input id="lvd" type="text" inputmode="numeric" value="${LS.get("leaveDays",26)}"></div>
    <div><label>ساعت یادآوری روزانه</label><input id="attRem" type="time" value="${LS.get("attRem","07:30")}"></div></div>
    <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="attRemOn" type="checkbox" style="width:auto" ${LS.get("attRemOn",true)?"checked":""}> اعلان یادآوری حضور و غیاب</label>
    <div class="row" style="margin-top:9px"><button class="primary" id="saveAttSet">ذخیره</button></div></details></div>`;}
@@ -2342,7 +2368,7 @@ function vWorkers(){ if(selD){const c=S.contacts.find(x=>x.id===selD); if(c) ret
    ${ws.length?`<details><summary>تعریف کار</summary><div class="grid2">
     <div><label>کارگر</label><select id="jw">${ws.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></div>
     <div><label>نوع کار</label><select id="jt">${JOB_T.map(x=>`<option>${x}</option>`).join("")}</select></div>
-    <div><label>محل</label><input id="ja" placeholder="مثلاً زیر بچینگ"></div><div><label>ساعت</label><input id="jh" type="number" inputmode="decimal"></div></div>
+    <div><label>محل</label><input id="ja" placeholder="مثلاً زیر بچینگ"></div><div><label>ساعت</label><input id="jh" type="text" inputmode="decimal"></div></div>
     <label>توضیح</label><input id="jn"><div class="row" style="margin-top:9px"><button class="primary" id="addJob">ثبت کار</button></div></details>`:""}</div>
   ${all.length?`<div class="card"><h3>رتبه‌بندی کارگران</h3><div class="scrollx"><table><tr><th>#</th><th>نام</th><th>نقش</th><th>امتیاز</th><th>کارکرد</th><th>غیبت</th><th>کار انجام‌شده</th><th>شستشو</th><th>کیفیت</th><th>ساعت کار</th></tr>
    ${rk.map((p,i)=>{const [g,gc]=grade(p.score);return `<tr><td>${fa(i+1)}</td><td><button class="linkbtn" data-opend="${p.c.id}">${esc(p.c.name)}</button></td><td>${esc(roleOf(p.c))}</td>
@@ -2356,9 +2382,9 @@ function washModal(taskId,machineId){const ws=[...workers().filter(c=>roleOf(c)=
   showModal(`<h3 style="margin:0 0 6px">ثبت شستشو</h3>
    <label>دستگاه</label><select id="wm">${washable().map(m=>`<option value="${m.id}" ${m.id===machineId?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
    <div class="grid2"><div><label>نوع</label><select id="wty">${WASH_T.map(x=>`<option>${x}</option>`).join("")}</select></div>
-   <div><label>مدت (دقیقه)</label><input id="wdu" type="number" inputmode="numeric"></div>
+   <div><label>مدت (دقیقه)</label><input id="wdu" type="text" inputmode="numeric"></div>
    <div><label>امتیاز ظاهر بعد از شستشو</label><select id="wsc"><option value="">—</option>${[5,4,3,2,1].map(n=>`<option value="${n}">${fa(n)} ${stars(n)}</option>`).join("")}</select></div>
-   <div><label>هزینه مواد (تومان)</label><input id="wco" type="number" inputmode="numeric"></div></div>
+   <div><label>هزینه مواد (تومان)</label><input id="wco" type="text" inputmode="numeric"></div></div>
    <label>انجام‌دهنده</label>${ws.length?`<div class="chks">${ws.map(c=>`<label><input type="checkbox" class="wk" value="${c.id}" style="width:auto"> ${esc(c.name)}</label>`).join("")}</div>`:'<div class="note">کارگری ثبت نشده؛ از بخش «کارگران محوطه» اضافه کن.</div>'}
    <label>توضیح</label><input id="wno">
    <div class="row" style="margin-top:10px"><button class="primary" data-washsave="${taskId||""}">ثبت</button><button class="ghost" data-jdclose="1">بستن</button></div>`);}
@@ -2653,8 +2679,8 @@ function vTasks(kind){
         ${S.machines.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select>
       <div class="grid2">
         <div><label>تاریخ سررسید</label>${jdate("td",todayISO())}</div>
-        <div><label>دوره تکرار (روز)</label><input id="ti" type="number" inputmode="numeric" placeholder="${kind==="pm"?"30":"7"}"></div>
-        ${kind==="pm"?`<div><label>یا هر چند ساعت/کیلومتر</label><input id="tu" type="number" inputmode="numeric" placeholder="مثلاً ۲۵۰"></div>`:""}
+        <div><label>دوره تکرار (روز)</label><input id="ti" type="text" inputmode="numeric" placeholder="${kind==="pm"?"30":"7"}"></div>
+        ${kind==="pm"?`<div><label>یا هر چند ساعت/کیلومتر</label><input id="tu" type="text" inputmode="numeric" placeholder="مثلاً ۲۵۰"></div>`:""}
       </div>
       <label>اولویت</label><select id="tp"><option>عادی</option><option>مهم</option><option>بحرانی</option></select>
       <label>توضیح</label><textarea id="tx" placeholder="قطعات لازم، نفرات، نکات ایمنی..."></textarea>
@@ -2695,11 +2721,11 @@ function vBatchProd(){
   <div class="card"><h3>ثبت تولید روزانه</h3>
     <div class="grid2">
       <div><label>تاریخ</label>${jdate("pd",todayISO())}</div>
-      <div><label>حجم تولید (م³)</label><input id="pv" type="number" inputmode="decimal"></div>
+      <div><label>حجم تولید (م³)</label><input id="pv" type="text" inputmode="decimal"></div>
       <div><label>عیار غالب</label><input id="pg" placeholder="مثلاً C25"></div>
-      <div><label>سیمان (kg/m³)</label><input id="pc" type="number" inputmode="numeric"></div>
-      <div><label>توقف کل (دقیقه)</label><input id="pt" type="number" inputmode="numeric"></div>
-      <div><label>برگشتی (م³)</label><input id="pr" type="number" inputmode="decimal"></div>
+      <div><label>سیمان (kg/m³)</label><input id="pc" type="text" inputmode="numeric"></div>
+      <div><label>توقف کل (دقیقه)</label><input id="pt" type="text" inputmode="numeric"></div>
+      <div><label>برگشتی (م³)</label><input id="pr" type="text" inputmode="decimal"></div>
     </div>
     <label>علت توقف / نکات کیفی</label><textarea id="pn" placeholder="خرابی، کمبود مصالح، رطوبت شن، اسلامپ..."></textarea>
     <div class="row" style="margin-top:9px"><button class="primary" id="addP">ثبت روز</button></div>
@@ -2715,7 +2741,7 @@ function vBatchProd(){
       .map(x=>`<button class="chip" data-preset="${x}">${x}</button>`).join("")}</div>
     <details><summary>افزودن اقدام</summary>
       <label>عنوان</label><input id="tt"><label>تاریخ</label>${jdate("td",todayISO())}
-      <label>دوره تکرار (روز)</label><input id="ti" type="number" inputmode="numeric">
+      <label>دوره تکرار (روز)</label><input id="ti" type="text" inputmode="numeric">
       <label>توضیح</label><textarea id="tx"></textarea>
       <div class="row" style="margin-top:9px"><button class="primary" data-addt="batch">ثبت</button></div>
     </details>
@@ -2759,7 +2785,7 @@ function vStops(){
   const recent=[...S.stops].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
   return `<div class="card"><h3>ثبت توقف تولید</h3>
     <div class="note">هر توقف را با علتش ثبت کن؛ جمع توقف‌های هر روز خودکار در تولید همان روز قرار می‌گیرد.</div>
-    <div class="grid2"><div><label>تاریخ</label>${jdate("sd",t)}</div><div><label>مدت (دقیقه)</label><input id="smin" type="number" inputmode="numeric"></div></div>
+    <div class="grid2"><div><label>تاریخ</label>${jdate("sd",t)}</div><div><label>مدت (دقیقه)</label><input id="smin" type="text" inputmode="numeric"></div></div>
     <label>علت</label><select id="scat">${STOP_CATS.map(x=>`<option>${x}</option>`).join("")}</select>
     <label>دستگاه مرتبط (اختیاری)</label><select id="smc"><option value="">—</option>${S.machines.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select>
     <label>توضیح</label><input id="snote" placeholder="مثلاً گیر کردن دریچه سیلوی ۲">
@@ -2784,16 +2810,16 @@ function vMix(){
      <td><button class="danger" data-mixdel="${m.id}">حذف</button></td></tr>`).join("")}</table></div><div class="note">مقادیر به کیلوگرم در هر متر مکعب، بر اساس مصالح اشباع با سطح خشک.</div>`:'<div class="empty">طرحی ثبت نشده.</div>'}
     <details><summary>افزودن طرح اختلاط</summary>
      <div class="grid2"><div><label>عیار / نام</label><input id="xg" placeholder="C25"></div><div><label>اسلامپ هدف (سانتی‌متر)</label><input id="xsl" inputmode="numeric"></div>
-     <div><label>سیمان (kg/m³)</label><input id="xc" type="number" inputmode="numeric"></div><div><label>آب (kg/m³)</label><input id="xw" type="number" inputmode="numeric"></div>
-     <div><label>ماسه (kg/m³)</label><input id="xs" type="number" inputmode="numeric"></div><div><label>شن (kg/m³)</label><input id="xgr" type="number" inputmode="numeric"></div>
-     <div><label>افزودنی (kg/m³)</label><input id="xa" type="number" inputmode="decimal"></div></div>
+     <div><label>سیمان (kg/m³)</label><input id="xc" type="text" inputmode="numeric"></div><div><label>آب (kg/m³)</label><input id="xw" type="text" inputmode="numeric"></div>
+     <div><label>ماسه (kg/m³)</label><input id="xs" type="text" inputmode="numeric"></div><div><label>شن (kg/m³)</label><input id="xgr" type="text" inputmode="numeric"></div>
+     <div><label>افزودنی (kg/m³)</label><input id="xa" type="text" inputmode="decimal"></div></div>
      <div class="row" style="margin-top:9px"><button class="primary" id="addMix">ثبت طرح</button></div></details></div>
    <div class="card"><h3>ثبت بچ و مقایسه با طرح</h3>
     ${S.mixes.length?`<div class="note">وزن‌های واقعی کل بچ را از گزارش چاپی بچینگ وارد کن.</div>
      <div class="grid2"><div><label>تاریخ</label>${jdate("bd",todayISO())}</div><div><label>طرح</label><select id="bm">${S.mixes.map(m=>`<option value="${m.id}">${esc(m.grade)}</option>`).join("")}</select></div>
-     <div><label>حجم بچ (م³)</label><input id="bv" type="number" inputmode="decimal"></div><div><label>سیمان واقعی (kg)</label><input id="bc" type="number" inputmode="numeric"></div>
-     <div><label>آب واقعی (kg)</label><input id="bw" type="number" inputmode="numeric"></div><div><label>ماسه واقعی (kg)</label><input id="bs" type="number" inputmode="numeric"></div>
-     <div><label>شن واقعی (kg)</label><input id="bgv" type="number" inputmode="numeric"></div><div><label>افزودنی واقعی (kg)</label><input id="ba" type="number" inputmode="decimal"></div>
+     <div><label>حجم بچ (م³)</label><input id="bv" type="text" inputmode="decimal"></div><div><label>سیمان واقعی (kg)</label><input id="bc" type="text" inputmode="numeric"></div>
+     <div><label>آب واقعی (kg)</label><input id="bw" type="text" inputmode="numeric"></div><div><label>ماسه واقعی (kg)</label><input id="bs" type="text" inputmode="numeric"></div>
+     <div><label>شن واقعی (kg)</label><input id="bgv" type="text" inputmode="numeric"></div><div><label>افزودنی واقعی (kg)</label><input id="ba" type="text" inputmode="decimal"></div>
      <div><label>اسلامپ (cm)</label><input id="bsl" inputmode="decimal"></div><div><label>دمای بتن (°C)</label><input id="btmp" inputmode="decimal"></div></div>
      <div class="row" style="margin-top:9px"><button class="primary" id="addBatch">ثبت بچ</button></div>`:'<div class="empty">ابتدا یک طرح اختلاط ثبت کن.</div>'}</div>
    ${devs.length?`<div class="card"><h3>دقت توزین</h3>
@@ -2811,9 +2837,9 @@ function vMoist(){const L=LS.get("moist",{});
   return `<div class="card"><h3>ماشین‌حساب اصلاح رطوبت</h3>
    <div class="note">طرح اختلاط بر اساس مصالح اشباع با سطح خشک است. با وارد کردن رطوبت و جذب آب، وزن مصالح و آب اصلاح‌شده را می‌گیری.</div>
    ${S.mixes.length?`<div class="grid2"><div><label>طرح</label><select id="mcm">${S.mixes.map(m=>`<option value="${m.id}" ${m.id===L.mix?"selected":""}>${esc(m.grade)}</option>`).join("")}</select></div>
-    <div><label>حجم (م³)</label><input id="mcv" type="number" inputmode="decimal" value="${L.V||1}"></div>
-    <div><label>رطوبت ماسه (٪)</label><input id="msm" type="number" inputmode="decimal" value="${L.sm??""}"></div><div><label>جذب آب ماسه (٪)</label><input id="msa" type="number" inputmode="decimal" value="${L.sa??1.5}"></div>
-    <div><label>رطوبت شن (٪)</label><input id="mgm" type="number" inputmode="decimal" value="${L.gm??""}"></div><div><label>جذب آب شن (٪)</label><input id="mga" type="number" inputmode="decimal" value="${L.ga??0.8}"></div></div>
+    <div><label>حجم (م³)</label><input id="mcv" type="text" inputmode="decimal" value="${L.V||1}"></div>
+    <div><label>رطوبت ماسه (٪)</label><input id="msm" type="text" inputmode="decimal" value="${L.sm??""}"></div><div><label>جذب آب ماسه (٪)</label><input id="msa" type="text" inputmode="decimal" value="${L.sa??1.5}"></div>
+    <div><label>رطوبت شن (٪)</label><input id="mgm" type="text" inputmode="decimal" value="${L.gm??""}"></div><div><label>جذب آب شن (٪)</label><input id="mga" type="text" inputmode="decimal" value="${L.ga??0.8}"></div></div>
     <div class="row" style="margin-top:9px"><button class="primary" id="calcMoist">محاسبه</button></div><div id="mcOut" style="margin-top:10px"></div>`
     :'<div class="empty">ابتدا در بخش «طرح اختلاط و بچ» یک طرح ثبت کن.</div>'}</div>
    <div class="card"><h3>روش اندازه‌گیری سریع رطوبت</h3><div class="m">نمونه حدود ۵۰۰ گرم را وزن کن (W۱)، روی اجاق یا در فر کاملاً خشک کن و دوباره وزن کن (W۲). رطوبت = (W۱ − W۲) ÷ W۲ × ۱۰۰. این کار را صبح و بعد از هر بارندگی یا ورود محموله جدید تکرار کن.</div></div>`;}
@@ -2835,8 +2861,8 @@ function vCalib(){const t=todayISO();
      :'<div class="empty">هنوز کالیبراسیونی ثبت نشده.</div>'}</div>
    <div class="card"><h3>ثبت کالیبراسیون</h3>
     <div class="grid2"><div><label>تجهیز</label><select id="cit">${CAL_ITEMS.map(x=>`<option>${x}</option>`).join("")}</select></div><div><label>تاریخ</label>${jdate("cdt",t)}</div>
-    <div><label>نتیجه</label><select id="cres"><option>قبول</option><option>رد</option></select></div><div><label>خطای اندازه‌گیری (٪)</label><input id="cerr" type="number" inputmode="decimal"></div>
-    <div><label>انجام‌دهنده</label><input id="cby" placeholder="شرکت یا نفر"></div><div><label>دوره بعدی (روز)</label><input id="civ" type="number" inputmode="numeric" value="90"></div></div>
+    <div><label>نتیجه</label><select id="cres"><option>قبول</option><option>رد</option></select></div><div><label>خطای اندازه‌گیری (٪)</label><input id="cerr" type="text" inputmode="decimal"></div>
+    <div><label>انجام‌دهنده</label><input id="cby" placeholder="شرکت یا نفر"></div><div><label>دوره بعدی (روز)</label><input id="civ" type="text" inputmode="numeric" value="90"></div></div>
     <label>توضیح</label><input id="cno" placeholder="وزنه‌های استاندارد، اصلاحات انجام‌شده">
     <div class="row" style="margin-top:9px"><button class="primary" id="addCal">ثبت</button></div>
     <div class="note" style="margin-top:6px">۷ روز قبل و روز سررسید بعدی، اعلان می‌آید.</div></div>
@@ -2858,8 +2884,8 @@ function vOee(){const t=todayISO(), ds=[...Array(30)].map((_,i)=>addDays(t,i-29)
     :'<div class="empty">برای محاسبه، تولید روزانه را در بخش «تولید روزانه» ثبت کن.</div>'}
    <div class="m" style="margin-top:8px">دسترس‌پذیری = زمان کار ÷ زمان برنامه‌ریزی‌شده • عملکرد = تولید واقعی ÷ تولید ممکن با ظرفیت اسمی • کیفیت = بتن سالم ÷ کل تولید. OEE حاصل‌ضرب این سه است.</div></div>
    <div class="card"><h3>تنظیمات محاسبه</h3><div class="grid2">
-    <div><label>ظرفیت اسمی بچینگ (م³ در ساعت)</label><input id="ocap" type="number" inputmode="numeric" value="${LS.get("capM3h",60)}"></div>
-    <div><label>ساعت کاری برنامه‌ریزی‌شده در روز</label><input id="oph" type="number" inputmode="decimal" value="${LS.get("planH",10)}"></div></div>
+    <div><label>ظرفیت اسمی بچینگ (م³ در ساعت)</label><input id="ocap" type="text" inputmode="numeric" value="${LS.get("capM3h",60)}"></div>
+    <div><label>ساعت کاری برنامه‌ریزی‌شده در روز</label><input id="oph" type="text" inputmode="decimal" value="${LS.get("planH",10)}"></div></div>
     <div class="row" style="margin-top:9px"><button class="primary" id="saveOee">ذخیره</button></div></div>`;}
 
 /* ---------- مواد اولیه ---------- */
@@ -2883,8 +2909,8 @@ function vMat(){const mn=LS.get("minStock",{}), t=todayISO();
   <div class="card"><h3>ثبت ورود مصالح</h3>
    <div class="grid2"><div><label>تاریخ</label>${jdate("rd2",t)}</div><div><label>مصالح</label><select id="rmat">${MATS.map(([k,n,u])=>`<option value="${k}">${n} (${u})</option>`).join("")}</select></div>
    <div><label>تأمین‌کننده</label><input id="rsup" list="rsl"><datalist id="rsl">${[...new Set(S.receipts.map(r=>r.supplier).filter(Boolean))].map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
-   <div><label>مقدار</label><input id="rqty" type="number" inputmode="decimal"></div>
-   <div><label>قیمت واحد (تومان)</label><input id="rpr" type="number" inputmode="numeric"></div><div><label>شماره بارنامه / قبض</label><input id="rbill"></div>
+   <div><label>مقدار</label><input id="rqty" type="text" inputmode="decimal"></div>
+   <div><label>قیمت واحد (تومان)</label><input id="rpr" type="text" inputmode="numeric"></div><div><label>شماره بارنامه / قبض</label><input id="rbill"></div>
    <div><label>کیفیت ظاهری</label><select id="rq"><option>مطلوب</option><option>متوسط</option><option>نامطلوب</option></select></div></div>
    <label>توضیح</label><input id="rno" placeholder="رطوبت، دانه‌بندی، خاک، دمای سیمان...">
    <div class="row" style="margin-top:9px"><button class="primary" id="addRec">ثبت ورودی</button></div></div>
@@ -2896,9 +2922,9 @@ function vMat(){const mn=LS.get("minStock",{}), t=todayISO();
     <div class="row" style="margin-top:6px"><button class="danger" data-recdel="${r.id}">حذف</button></div></div>`).join(""):'<div class="empty">ورودی ثبت نشده.</div>'}</div>
   <div class="card"><h3>شمارش موجودی و حداقل‌ها</h3>
    <div class="grid2"><div><label>مصالح</label><select id="cmat">${MATS.map(([k,n,u])=>`<option value="${k}">${n} (${u})</option>`).join("")}</select></div><div><label>تاریخ (پایان روز)</label>${jdate("cdate",t)}</div>
-   <div><label>موجودی شمارش‌شده</label><input id="cqty" type="number" inputmode="decimal"></div><div style="align-self:end"><button class="primary" id="addCount" style="width:100%">ثبت شمارش</button></div></div>
+   <div><label>موجودی شمارش‌شده</label><input id="cqty" type="text" inputmode="decimal"></div><div style="align-self:end"><button class="primary" id="addCount" style="width:100%">ثبت شمارش</button></div></div>
    <hr><div class="note">اگر موجودی کمتر از حداقل شود، در داشبورد هشدار می‌گیری.</div>
-   <div class="grid2">${MATS.map(([k,n,u])=>`<div><label>حداقل ${n} (${u})</label><input id="mn_${k}" type="number" inputmode="decimal" value="${mn[k]||""}"></div>`).join("")}</div>
+   <div class="grid2">${MATS.map(([k,n,u])=>`<div><label>حداقل ${n} (${u})</label><input id="mn_${k}" type="text" inputmode="decimal" value="${mn[k]||""}"></div>`).join("")}</div>
    <div class="row" style="margin-top:9px"><button class="ghost" id="saveMin">ذخیره حداقل‌ها</button></div>
    ${S.counts.length?`<details style="margin-top:8px"><summary>سابقه شمارش</summary>${[...S.counts].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20).map(c=>`<div class="item"><div class="t">${mLabel(c.material)} • ${f1(c.qty)} ${mUnit(c.material)}</div><div class="m">${jal(c.date)}</div>
     <div class="row" style="margin-top:6px"><button class="danger" data-countdel="${c.id}">حذف</button></div></div>`).join("")}</details>`:""}</div>`;}
@@ -2914,7 +2940,7 @@ function vPlan(){
     <details><summary>افزودن برنامه</summary>
       <label>عنوان</label><input id="tt"><label>مسئول</label><input id="tm2" placeholder="نام نفر یا واحد">
       <div class="grid2"><div><label>تاریخ هدف</label>${jdate("td",todayISO())}</div>
-      <div><label>دوره تکرار (روز)</label><input id="ti" type="number" inputmode="numeric"></div></div>
+      <div><label>دوره تکرار (روز)</label><input id="ti" type="text" inputmode="numeric"></div></div>
       <label>اولویت</label><select id="tp"><option>عادی</option><option>مهم</option><option>بحرانی</option></select>
       <label>شرح و خروجی مورد انتظار</label><textarea id="tx"></textarea>
       <div class="row" style="margin-top:9px"><button class="primary" data-addt="plan">ثبت برنامه</button></div>
@@ -3118,7 +3144,7 @@ function vCost(){const {f,t}=repRange(), c=costRep(f,t), pv=costRep(addDays(f,-r
    ${miss.length?`<div class="note" style="color:var(--bad);margin-top:6px">${fa(miss.length)} قلم داده ندارد، پس عدد بالا کمتر از واقعیت است.</div>`:""}
    <div class="note" style="margin-top:6px">مصالح = حجم تولید × طرح اختلاط همان عیار × آخرین قیمت واحد ثبت‌شده در ورود مصالح. دستمزد به نسبت روزهای بازه از حقوق ماهانه سرشکن می‌شود.</div>
    <details style="margin-top:8px"><summary>جمع حقوق و دستمزد ماهانه</summary>
-    <div class="grid2"><div><label>تومان در ماه</label><input id="wageM" type="number" inputmode="numeric" value="${c.wm||""}"></div>
+    <div class="grid2"><div><label>تومان در ماه</label><input id="wageM" type="text" inputmode="numeric" value="${c.wm||""}"></div>
     <div style="align-self:end"><button class="primary" id="saveWage" style="width:100%">ذخیره</button></div></div></details></div>`;}
 
 /* ---------- تطبیق حمل و تطبیق مصالح / سیلو ---------- */
@@ -3165,7 +3191,7 @@ function vOps(){const {f,t}=repRange(), RA=S.opprod.filter(x=>inR(x.date,f,t)), 
   <div class="card"><h3>ثبت تولید اوپراتور</h3>
    ${plants.length?`<div class="grid2"><div><label>تاریخ</label>${jdate("opd",t)}</div><div><label>شیفت</label><select id="opsh"><option>روز</option><option>شب</option></select></div>
     <div><label>دستگاه بچینگ</label><select id="opm">${mOpts(["بچینگ"])}</select></div><div><label>اوپراتور</label><select id="opc">${cOpts()}</select></div>
-    <div><label>تولید (م³)</label><input id="opv" type="number" inputmode="decimal"></div><div><label>عیار</label><input id="opg" list="opgl"><datalist id="opgl">${S.mixes.map(x=>`<option value="${esc(x.grade)}">`).join("")}</datalist></div></div>
+    <div><label>تولید (م³)</label><input id="opv" type="text" inputmode="decimal"></div><div><label>عیار</label><input id="opg" list="opgl"><datalist id="opgl">${S.mixes.map(x=>`<option value="${esc(x.grade)}">`).join("")}</datalist></div></div>
     <div class="row" style="margin-top:9px"><button class="primary" id="addOp">ثبت تولید</button></div>
     <div class="note">جمع ثبت‌های هر روز خودکار به «تولید روزانه» در تب بچینگ می‌رود، پس آن را جدا وارد نکن.</div>
     <details style="margin-top:8px"><summary>ثبت تعمیری که اوپراتور انجام داده</summary>
@@ -3186,7 +3212,7 @@ function vOps(){const {f,t}=repRange(), RA=S.opprod.filter(x=>inR(x.date,f,t)), 
      <div style="height:8px;border-radius:4px;background:var(--line,#8884);margin-top:6px;overflow:hidden"><div style="height:100%;width:${Math.max(0,Math.min(100,pc))}%;background:${pc<15?"var(--bad)":"var(--brand)"}"></div></div></div>`}).join("")}
    <details style="margin-top:8px"><summary>ثبت شمارش سیلوها</summary>
     <div style="max-width:220px"><label>تاریخ (پایان روز)</label>${jdate("sld",t)}</div>
-    <div class="grid2">${SILOS.map(([c,n,cap])=>`<div><label>${n} (تن، ظرفیت ${fa(cap)})</label><input id="sl_${c}" type="number" inputmode="decimal"></div>`).join("")}</div>
+    <div class="grid2">${SILOS.map(([c,n,cap])=>`<div><label>${n} (تن، ظرفیت ${fa(cap)})</label><input id="sl_${c}" type="text" inputmode="decimal"></div>`).join("")}</div>
     <div class="row" style="margin-top:9px"><button class="primary" id="addSilo">ثبت شمارش</button></div>
     <div class="note">جمع شش سیلو خودکار به‌عنوان شمارش سیمان در تب مواد اولیه ثبت می‌شود و تطبیق مصالح از همان استفاده می‌کند. خانه‌ی خالی یعنی آن سیلو شمارش نشده.</div></details></div>`;}
 
@@ -3201,7 +3227,7 @@ function vPump(){const {f,t}=repRange(), R=S.pumpjobs.filter(x=>inR(x.date,f,t))
   return `${repChips()}${vPumpFiles()}
   <div class="card"><h3>ثبت اعزام پمپ</h3>
    ${pumps.length?`<div class="grid2"><div><label>تاریخ</label>${jdate("pjd",t)}</div><div><label>پروژه / مشتری</label><input id="pjc" list="pjcl"><datalist id="pjcl">${[...new Set(S.pumpjobs.map(x=>x.customer).filter(Boolean))].slice(-40).map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
-    <div><label>مقطع</label><select id="pjs">${SECTS.map(x=>`<option>${x}</option>`).join("")}</select></div><div><label>متراژ (م³)</label><input id="pjm" type="number" inputmode="decimal"></div>
+    <div><label>مقطع</label><select id="pjs">${SECTS.map(x=>`<option>${x}</option>`).join("")}</select></div><div><label>متراژ (م³)</label><input id="pjm" type="text" inputmode="decimal"></div>
     <div><label>پمپ</label><select id="pjp">${mOpts(["پمپ بتن"])}</select></div><div><label>کشنده (برای پمپ یدک)</label><select id="pjt"><option value="">ندارد</option>${mOpts(["کشنده"])}</select></div>
     <div><label>راننده / اوپراتور پمپ</label><select id="pjdr"><option value="">—</option>${cOpts()}</select></div><div><label>عیار</label><input id="pjg"></div></div>
     <label>کارگران اکیپ (با ویرگول جدا کن)</label><input id="pjw" placeholder="مثلاً: احمدی، رضایی">
@@ -3225,7 +3251,7 @@ function vParts(){const {f,t}=repRange(), need=S.parts.filter(p=>p.status==="م�
   <div class="card"><h3>ثبت قطعه</h3>
    <div class="grid2"><div><label>تاریخ</label>${jdate("ptd",t)}</div><div><label>وضعیت</label><select id="pts"><option>خریداری شد</option><option>مورد نیاز</option></select></div>
    <div><label>دستگاه</label><select id="ptm"><option value="">عمومی / انبار</option>${mOpts()}</select></div><div><label>نام قطعه</label><input id="ptn" list="ptnl"><datalist id="ptnl">${[...new Set(S.parts.map(p=>p.name).filter(Boolean))].map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
-   <div><label>تعداد</label><input id="ptq" type="number" inputmode="decimal" value="1"></div><div><label>قیمت واحد (تومان)</label><input id="ptp" type="number" inputmode="numeric"></div></div>
+   <div><label>تعداد</label><input id="ptq" type="text" inputmode="decimal" value="1"></div><div><label>قیمت واحد (تومان)</label><input id="ptp" type="text" inputmode="numeric"></div></div>
    <label>فروشنده / توضیح</label><input id="ptx">
    <div class="row" style="margin-top:9px"><button class="primary" id="addPart">ثبت</button></div></div>
   <div class="card"><h3>اقلام مورد نیاز برای خرید${need.length?`<span class="tag soon">${fa(need.length)}</span>`:""}</h3>
@@ -3246,7 +3272,7 @@ function vRet(){const {f,t}=repRange(), R=S.returns.filter(x=>inR(x.date,f,t)), 
   return `${repChips()}
   <div class="card"><h3>ثبت بتن برگشتی</h3>
    <div class="grid2"><div><label>تاریخ</label>${jdate("rtd",t)}</div><div><label>پروژه / مشتری</label><input id="rts" list="rtsl"><datalist id="rtsl">${[...new Set([...S.trips.map(x=>x.site),...S.pumpjobs.map(x=>x.customer)].filter(Boolean))].slice(-60).map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
-   <div><label>حجم برگشتی (م³)</label><input id="rtv" type="number" inputmode="decimal"></div><div><label>علت</label><select id="rtc">${RET_CAUSES.map(x=>`<option>${x}</option>`).join("")}</select></div>
+   <div><label>حجم برگشتی (م³)</label><input id="rtv" type="text" inputmode="decimal"></div><div><label>علت</label><select id="rtc">${RET_CAUSES.map(x=>`<option>${x}</option>`).join("")}</select></div>
    <div><label>میکسر</label><select id="rtm"><option value="">—</option>${mOpts(["میکسر"])}</select></div><div><label>سرنوشت بتن</label><select id="rtf"><option>دورریز</option><option>مصرف در محوطه</option><option>ارسال به پروژه‌ی دیگر</option></select></div></div>
    <label>توضیح</label><input id="rtn">
    <div class="row" style="margin-top:9px"><button class="primary" id="addRet">ثبت</button></div>
@@ -3290,7 +3316,7 @@ function edModal(col,id){ const r=(S[col]||[]).find(x=>String(x.id)===String(id)
     if(["machineId","pumpId","tractorId"].includes(k)) return `<label>${L}</label><select id="${eid}"><option value="">—</option>${S.machines.map(m=>`<option value="${m.id}" ${m.id===v?"selected":""}>${esc(m.name)}</option>`).join("")}</select>`;
     if(["contactId","by"].includes(k)) return `<label>${L}</label><select id="${eid}"><option value="">—</option>${S.contacts.map(c=>`<option value="${c.id}" ${c.id===v?"selected":""}>${esc(c.name)}</option>`).join("")}</select>`;
     if(typeof v==="boolean") return `<label>${L}</label><select id="${eid}"><option value="1" ${v?"selected":""}>بله</option><option value="0" ${v?"":"selected"}>خیر</option></select>`;
-    if(typeof v==="number") return `<label>${L}</label><input id="${eid}" type="number" step="any" inputmode="decimal" dir="ltr" value="${v}">`;
+    if(typeof v==="number") return `<label>${L}</label><input id="${eid}" type="text" step="any" inputmode="decimal" dir="ltr" value="${v}">`;
     if(ED_DATES.includes(k)) return `<label>${L}</label>${jdate(eid,v||"")}`;
     if(["notes","note","body","desc"].includes(k)||String(v||"").length>60) return `<label>${L}</label><textarea id="${eid}" rows="3">${esc(v||"")}</textarea>`;
     return `<label>${L}</label><input id="${eid}" value="${esc(v==null?"":v)}">`; };
@@ -3571,7 +3597,7 @@ function vKpi(){const t=todayISO(), m=metrics(addDays(t,-29),t), ev=kpiEval(m), 
      <div class="kv">${x.v==null?"—":fmtV(x.v,x.k==="tripsPerDay"||x.k==="rejPct"?1:0)}<small> ${x.v==null?"":x.u}</small></div></div>`).join("")}
    <div class="note" style="margin-top:6px">«—» یعنی هنوز داده کافی ثبت نشده.</div></div>
    <div class="card"><details><summary>تنظیم هدف‌ها</summary><div class="grid2">
-    ${KPIS.map(K=>`<div><label>${K.n} (${K.u})</label><input id="kt_${K.k}" type="number" inputmode="decimal" value="${kpiTarget(K.k)}"></div>`).join("")}</div>
+    ${KPIS.map(K=>`<div><label>${K.n} (${K.u})</label><input id="kt_${K.k}" type="text" inputmode="decimal" value="${kpiTarget(K.k)}"></div>`).join("")}</div>
     <div class="row" style="margin-top:9px"><button class="primary" id="saveKpi">ذخیره هدف‌ها</button></div></details></div>`;}
 function relRows(n){const t=todayISO(), f=addDays(t,-(n-1));
   return S.machines.map(m=>{const fs=S.faults.filter(x=>x.machineId===m.id&&inR(x.date,f,t)), fixed=fs.filter(x=>x.status==="fixed"&&+x.downH>0);
@@ -4041,8 +4067,8 @@ document.addEventListener("click",async e=>{
     el.innerHTML=`<div class="jdbox"><h3 style="margin:0 0 6px">حرکت ${esc(m.name)}${H?" — سرویس مصالح":""}</h3>
      <label>${H?"معدن / مبدأ":"مقصد / پروژه"}</label><input id="tsite" list="tsl" value="${esc(H&&last?last.site||"":"")}"><datalist id="tsl">${sites.map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
      ${H?`<div class="grid2"><div><label>نوع بار</label><select id="tmat">${MATS_HAUL.map(x=>`<option ${last&&last.material===x?"selected":""}>${x}</option>`).join("")}</select></div>
-     <div><label>تناژ</label><input id="tton" type="number" inputmode="decimal" value="${last&&last.tons||""}"></div></div>`:""}
-     <div class="grid2">${H?"":`<div><label>حجم (م³)</label><input id="tvol" type="number" inputmode="decimal" value="${last&&last.volume||MIXER_M3}"></div>`}
+     <div><label>تناژ</label><input id="tton" type="text" inputmode="decimal" value="${last&&last.tons||""}"></div></div>`:""}
+     <div class="grid2">${H?"":`<div><label>حجم (م³)</label><input id="tvol" type="text" inputmode="decimal" value="${last&&last.volume||MIXER_M3}"></div>`}
      <div><label>راننده</label><input id="tdrv" list="tdl" value="${esc((S.contacts.find(c=>c.machineId===m.id&&c.active!==false)||{}).name||m.driver||"")}"><datalist id="tdl">${S.contacts.map(c=>`<option value="${esc(c.name)}">`).join("")}</datalist></div></div>
      <div class="row" style="margin-top:10px"><button class="primary" data-tripgo="${m.id}">ثبت حرکت ساعت ${faNum(nowHM())}</button><button class="ghost" data-jdclose="1">انصراف</button></div></div>`;
     return; }
@@ -4058,7 +4084,7 @@ document.addEventListener("click",async e=>{
     jdState=null; const el=document.getElementById("modal"); el.hidden=false;
     el.innerHTML=`<div class="jdbox"><h3 style="margin:0 0 6px">ویرایش سرویس ${esc(mName(tr.machineId))}</h3>
      <label>مقصد / پروژه</label><input id="esite" value="${esc(tr.site||"")}">
-     <div class="grid2"><div><label>حجم (م³)</label><input id="evol" type="number" inputmode="decimal" value="${tr.volume||""}"></div>
+     <div class="grid2"><div><label>حجم (م³)</label><input id="evol" type="text" inputmode="decimal" value="${tr.volume||""}"></div>
      <div><label>راننده</label><input id="edrv" value="${esc(tr.driver||"")}"></div>
      <div><label>حرکت</label><input id="e1" type="time" value="${v("tDepart")}"></div><div><label>رسیدن به محل</label><input id="e2" type="time" value="${v("tArrive")}"></div>
      <div><label>پایان تخلیه</label><input id="e3" type="time" value="${v("tUnload")}"></div><div><label>رسیدن به کارگاه</label><input id="e4" type="time" value="${v("tReturn")}"></div></div>
